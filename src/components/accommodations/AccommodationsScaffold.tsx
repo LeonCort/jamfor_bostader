@@ -14,7 +14,7 @@ function formatSek(n?: number) {
 }
 
 export function AccommodationsScaffold() {
-  const { accommodations, addMock, remove } = useAccommodations();
+  const { accommodations, current, addMock, addOrUpdateCurrentMock, remove } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -46,6 +46,9 @@ export function AccommodationsScaffold() {
             <Button type="button" variant="secondary" className="h-10 w-full shadow-sm" onClick={() => addMock()}>
               Lägg till mockad bostad
             </Button>
+            <Button type="button" variant="outline" className="h-10 w-full shadow-sm" onClick={() => addOrUpdateCurrentMock()}>
+              Lägg till nuvarande bostad (mock)
+            </Button>
           </div>
 
           {/* Cards list */}
@@ -76,7 +79,14 @@ export function AccommodationsScaffold() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className={cn("inline-block size-2.5 rounded-full", a.color ?? "bg-slate-500")} />
-                        <div className="font-medium leading-tight">{a.title}</div>
+                        <div className="font-medium leading-tight flex items-center gap-2">
+                          <span>{a.title}</span>
+                          {a.kind === "current" && (
+                            <span className="inline-flex items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary ring-1 ring-primary/30">
+                              Nuvarande
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">{a.address}</div>
                     </div>
@@ -104,7 +114,10 @@ export function AccommodationsScaffold() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{formatSek(a.begartPris)}</span>
+                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Totalt/mån: {formatSek(a.totalMonthlyCost)}</span>
+                    {a.kind !== "current" && (
+                      <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Pris: {formatSek(a.begartPris)}</span>
+                    )}
                     <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Hyra: {formatSek(a.hyra)}/mån</span>
                     <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.antalRum ?? "—"} rum</span>
                     <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.boarea ?? "—"} m²</span>

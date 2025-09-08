@@ -7,6 +7,8 @@ export type SEK = number; // store as integer (SEK)
 
 export type Accommodation = {
   id: string;
+  // kind distinguishes regular candidates from the user's current home
+  kind?: "candidate" | "current"; // default: candidate
   title: string; // e.g., "3 rok i Sundbyberg"
   address?: string;
   // Position for mock map (percentages of container). We keep lat/lng optional for future real map.
@@ -16,7 +18,7 @@ export type Accommodation = {
   color?: string; // Tailwind bg-... class for marker color
 
   // Base scraped inputs
-  begartPris?: SEK; // Begärt pris
+  begartPris?: SEK; // Begärt pris (not applicable for kind === "current")
   driftkostnader?: SEK; // Årlig drift
   hyra?: SEK; // Månadsavgift / hyra
   antalRum?: number; // antal rum
@@ -25,10 +27,13 @@ export type Accommodation = {
   tomtarea?: number; // m²
 
   // Derived/calculated fields (filled later)
-  kontantinsats?: SEK;
+  kontantinsats?: SEK; // not applicable for kind === "current"
   lan?: SEK;
   amorteringPerManad?: SEK;
   rantaPerManad?: SEK;
+
+  // Main KPI: total monthly cost (all expenses combined)
+  totalMonthlyCost?: SEK;
 
   // Extensible metrics: commute times, distances, etc.
   metrics?: Record<string, unknown>;
@@ -66,6 +71,7 @@ function seedMockData(): Accommodation[] {
 
   return samples.map((s, i) => ({
     id: generateId(),
+    kind: "candidate",
     title: s.title,
     address: s.address,
     position: { xPercent: 40 + i * 8 + randomBetween(-3, 3), yPercent: 40 + i * 6 + randomBetween(-3, 3) },
@@ -100,6 +106,46 @@ function saveToStorage(list: Accommodation[]) {
     // ignore
   }
 }
+// Defaults and calculation helpers for financial KPIs
+const FINANCE_DEFAULTS = {
+  downPaymentRate: 0.15, // 15% kontantinsats
+  amortizationRateAnnual: 0.02, // 2% per year
+  interestRateAnnual: 0.03, // 3% per year
+} as const;
+
+function computeDerived(a: Accommodation): Accommodation {
+  const annualMaintenance = a.driftkostnader ?? 0;
+  const maintenancePerMonth = Math.round(annualMaintenance / 12);
+  const hyraPerManad = Math.round(a.hyra ?? 0);
+
+  let kontantinsats: number | undefined = undefined;
+  let lan: number | undefined = undefined;
+  let amorteringPerManad: number | undefined = undefined;
+  let rantaPerManad: number | undefined = undefined;
+
+  if (a.kind !== "current" && a.begartPris && a.begartPris > 0) {
+    kontantinsats = Math.round(a.begartPris * FINANCE_DEFAULTS.downPaymentRate);
+    lan = Math.max(0, a.begartPris - kontantinsats);
+    amorteringPerManad = Math.round((lan * FINANCE_DEFAULTS.amortizationRateAnnual) / 12);
+    rantaPerManad = Math.round((lan * FINANCE_DEFAULTS.interestRateAnnual) / 12);
+  }
+
+  const totalMonthlyCost =
+    (hyraPerManad || 0) +
+    (maintenancePerMonth || 0) +
+    (amorteringPerManad || 0) +
+    (rantaPerManad || 0);
+
+  return {
+    ...a,
+    kontantinsats,
+    lan,
+    amorteringPerManad,
+    rantaPerManad,
+    totalMonthlyCost,
+  };
+}
+
 
 export function useAccommodations() {
   const [accommodations, setAccommodations] = useState<Accommodation[] | null>(null);
@@ -108,11 +154,14 @@ export function useAccommodations() {
   useEffect(() => {
     const loaded = loadFromStorage();
     if (loaded && loaded.length > 0) {
-      setAccommodations(loaded);
+      const processed = loaded.map(computeDerived);
+      setAccommodations(processed);
+      saveToStorage(processed);
     } else {
       const seeded = seedMockData();
-      setAccommodations(seeded);
-      saveToStorage(seeded);
+      const processed = seeded.map(computeDerived);
+      setAccommodations(processed);
+      saveToStorage(processed);
     }
   }, []);
 
@@ -120,7 +169,7 @@ export function useAccommodations() {
     function commit(updater: (prev: Accommodation[]) => Accommodation[]) {
       setAccommodations((prev) => {
         const base = prev ?? [];
-        const next = updater(base);
+        const next = updater(base).map(computeDerived);
         saveToStorage(next);
         return next;
       });
@@ -147,6 +196,7 @@ export function useAccommodations() {
 
       const newItem: Accommodation = {
         id: generateId(),
+        kind: "candidate",
         title: randomFrom(titles),
         address: randomFrom(places),
         position: { xPercent: Math.round(randomBetween(15, 85)), yPercent: Math.round(randomBetween(15, 80)) },
@@ -176,9 +226,45 @@ export function useAccommodations() {
       commit(() => []);
     }
 
-    return { add, addMock, remove, update, clear };
+    // Create or update a single persistent current accommodation (mock data)
+    function addOrUpdateCurrentMock() {
+      const titles = ["Nuvarande hem", "Vårt hem", "Min bostad"];
+      const places = [
+        "Stockholm",
+        "Solna, Stockholm",
+        "Sundbyberg, Stockholm",
+        "Bromma, Stockholm",
+      ];
+      const mock: Accommodation = {
+        id: generateId(),
+        kind: "current",
+        title: randomFrom(titles),
+        address: randomFrom(places),
+        position: { xPercent: Math.round(randomBetween(20, 80)), yPercent: Math.round(randomBetween(20, 75)) },
+        color: "bg-slate-600",
+        // Fields like begartPris/kontantinsats are intentionally omitted for current
+        hyra: Math.round(randomBetween(2_500, 6_500)),
+        antalRum: Math.round(randomBetween(1, 5)),
+        boarea: Math.round(randomBetween(30, 120)),
+        metrics: {},
+      };
+
+      commit((prev) => {
+        const existingIdx = prev.findIndex((a) => a.kind === "current");
+        if (existingIdx >= 0) {
+          const updated = { ...prev[existingIdx], ...mock, id: prev[existingIdx].id };
+          const next = [...prev];
+          next[existingIdx] = updated;
+          return next;
+        }
+        return [mock, ...prev];
+      });
+    }
+
+    return { add, addMock, remove, update, clear, addOrUpdateCurrentMock };
   }, []);
 
-  return { accommodations: accommodations ?? [], ...api } as const;
+  const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;
+  return { accommodations: accommodations ?? [], current, ...api } as const;
 }
 
