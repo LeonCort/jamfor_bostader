@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Building2, Plus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,8 @@ export function AccommodationsScaffold() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const confirmItem = accommodations.find((x) => x.id === confirmId);
   const activeId = hoveredId ?? selectedId;
   const hasActive = !!activeId;
 
@@ -86,25 +88,16 @@ export function AccommodationsScaffold() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-[10rem]">
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <DropdownMenuItem variant="destructive" onSelect={(e) => e.preventDefault()}>
-                                Ta bort
-                              </DropdownMenuItem>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Ta bort bostad?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Vill du ta bort "{a.title}"? Detta går inte att ångra.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel onClick={() => setOpenMenuId(null)}>Avbryt</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => { remove(a.id); setOpenMenuId(null); }}>Ta bort</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              setOpenMenuId(null);
+                              setTimeout(() => setConfirmId(a.id), 0);
+                            }}
+                          >
+                            Ta bort
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -186,6 +179,33 @@ export function AccommodationsScaffold() {
             <Plus className="h-5 w-5" />
           </Button>
         </section>
+
+        <AlertDialog open={!!confirmId} onOpenChange={(open) => { if (!open) { setConfirmId(null); setOpenMenuId(null); } }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ta bort bostad?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Vill du ta bort "{confirmItem?.title}"? Detta går inte att ångra.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setConfirmId(null)}>Avbryt</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmId) {
+                    remove(confirmId);
+                    if (selectedId === confirmId) setSelectedId(null);
+                    if (hoveredId === confirmId) setHoveredId(null);
+                  }
+                  setConfirmId(null);
+                }}
+              >
+                Ta bort
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
 
 
       </div>
