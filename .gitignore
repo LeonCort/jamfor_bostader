@@ -1,1 +1,56 @@
-node_modules
+# Node
+node_modules/
+.npm/
+
+# Next.js
+.next/
+out/
+.vercel/
+
+# Build outputs
+build/
+dist/
+
+# Caches
+.swc/
+.eslintcache
+.stylelintcache
+.turbo/
+.parcel-cache/
+.cache/
+
+# TypeScript
+*.tsbuildinfo
+
+# Env files (keep examples in git)
+.env*
+!.env.example
+
+# Test coverage / reports
+coverage/
+.nyc_output/
+
+# E2E / UI test artifacts
+# (ignored even if not currently used)
+test-results/
+playwright-report/
+blob-report/
+cypress/screenshots/
+cypress/videos/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Note: Do NOT ignore next-env.d.ts (Next.js TypeScript helpers)
