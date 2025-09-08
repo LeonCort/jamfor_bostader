@@ -1,11 +1,25 @@
 "use client";
 
-import { Building2, MapPin, Plus } from "lucide-react";
+import { useState } from "react";
+import { Building2, Plus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useAccommodations } from "@/lib/accommodations";
+import { cn } from "@/lib/utils";
+
+function formatSek(n?: number) {
+  if (n == null) return "—";
+  return n.toLocaleString("sv-SE", { maximumFractionDigits: 0 }) + " kr";
+}
 
 export function AccommodationsScaffold() {
-  const { accommodations, addMock } = useAccommodations();
+  const { accommodations, addMock, remove } = useAccommodations();
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const activeId = hoveredId ?? selectedId;
+  const hasActive = !!activeId;
 
   return (
     <div className="mx-auto max-w-screen-2xl px-4 sm:px-6">
@@ -32,18 +46,79 @@ export function AccommodationsScaffold() {
             </Button>
           </div>
 
-          <div className="rounded-xl border border-border/60 bg-card/80 p-5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="font-medium">Redo att börja jämföra?</div>
-                <p className="text-sm text-muted-foreground">
-                  Dina jämförda bostäder kommer att dyka upp här. Lägg till din första bostad för att se restider.
-                </p>
-              </div>
-            </div>
+          {/* Cards list */}
+          <div className="space-y-3">
+            {accommodations.map((a) => {
+              const isActive = activeId === a.id;
+              return (
+                <div
+                  key={a.id}
+                  role="button"
+                  tabIndex={0}
+                  onMouseEnter={() => setHoveredId(a.id)}
+                  onMouseLeave={() => setHoveredId((prev) => (prev === a.id ? null : prev))}
+                  onClick={() => setSelectedId((prev) => (prev === a.id ? null : a.id))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedId((prev) => (prev === a.id ? null : a.id));
+                    }
+                  }}
+                  className={cn(
+                    "rounded-xl border border-border/60 bg-card/80 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60 cursor-pointer transition",
+                    "hover:border-primary/40 hover:ring-1 hover:ring-primary/30",
+                    isActive && "border-primary/60 ring-1 ring-primary/40 bg-primary/5"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("inline-block size-2.5 rounded-full", a.color ?? "bg-slate-500")} />
+                        <div className="font-medium leading-tight">{a.title}</div>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{a.address}</div>
+                    </div>
+                    <div className="shrink-0 -mt-1 -me-1">
+                      <DropdownMenu open={openMenuId === a.id} onOpenChange={(o) => setOpenMenuId(o ? a.id : null)}>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[10rem]">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem variant="destructive" onSelect={(e) => e.preventDefault()}>
+                                Ta bort
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Ta bort bostad?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Vill du ta bort "{a.title}"? Detta går inte att ångra.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setOpenMenuId(null)}>Avbryt</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => { remove(a.id); setOpenMenuId(null); }}>Ta bort</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{formatSek(a.begartPris)}</span>
+                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Hyra: {formatSek(a.hyra)}/mån</span>
+                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.antalRum ?? "—"} rum</span>
+                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.boarea ?? "—"} m²</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </aside>
 
@@ -56,35 +131,47 @@ export function AccommodationsScaffold() {
           </div>
 
           {/* Accommodation markers */}
-          {accommodations.map((a) => (
-            <div
-              key={a.id}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${a.position.xPercent}%`, top: `${a.position.yPercent}%` }}
-            >
+          {accommodations.map((a) => {
+            const isActive = activeId === a.id;
+            return (
               <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full ${a.color ?? "bg-slate-500"} text-white shadow ring-2 ring-border/50`}
-                title={a.title}
+                key={a.id}
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${a.position.xPercent}%`, top: `${a.position.yPercent}%` }}
               >
-                <Building2 className="h-4 w-4" />
+                <div
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full text-white shadow transition-transform",
+                    a.color ?? "bg-slate-500",
+                    isActive ? "ring-4 ring-primary scale-110" : "ring-2 ring-border/50",
+                    hasActive && !isActive ? "opacity-60" : ""
+                  )}
+                  title={a.title}
+                >
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div className="mt-2 w-max rounded-md bg-card/80 px-3 py-2 text-xs shadow-sm ring-1 ring-border/60 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+                  <div className="font-medium">{a.title}</div>
+                  <div className="text-muted-foreground">{a.address}</div>
+                </div>
               </div>
-              <div className="mt-2 w-max rounded-md bg-card/80 px-3 py-2 text-xs shadow-sm ring-1 ring-border/60 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-                <div className="font-medium">{a.title}</div>
-                <div className="text-muted-foreground">{a.address}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Legend */}
           <div className="absolute left-6 bottom-6 rounded-lg border border-border/60 bg-card/80 p-3 text-xs shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
             <div className="font-medium">Bostäder</div>
             <div className="mt-2 space-y-1">
-              {accommodations.map((a) => (
-                <div key={a.id} className="flex items-center gap-2">
-                  <span className={`inline-block size-2.5 rounded-full ${a.color ?? "bg-slate-500"}`} />
-                  <span className="text-muted-foreground">{a.title}</span>
-                </div>
-              ))}
+              {accommodations.map((a) => {
+                const isActive = activeId === a.id;
+                return (
+
+                  <div key={a.id} className="flex items-center gap-2">
+                    <span className={cn("inline-block size-2.5 rounded-full", a.color ?? "bg-slate-500", hasActive && !isActive && "opacity-60")} />
+                    <span className={cn("text-muted-foreground", hasActive && !isActive && "opacity-60")}>{a.title}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -99,6 +186,8 @@ export function AccommodationsScaffold() {
             <Plus className="h-5 w-5" />
           </Button>
         </section>
+
+
       </div>
     </div>
   );
