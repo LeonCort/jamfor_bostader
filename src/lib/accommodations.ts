@@ -83,7 +83,13 @@ function seedMockData(): Accommodation[] {
     boarea: Math.round(randomBetween(45, 95)),
     biarea: Math.round(randomBetween(0, 20)),
     tomtarea: Math.round(randomBetween(0, 250)),
-    metrics: {},
+    metrics: {
+      commute: {
+        work: Math.round(randomBetween(18, 55)),
+        grocery: Math.round(randomBetween(3, 15)),
+        school: Math.round(randomBetween(6, 25)),
+      },
+    },
   }));
 }
 
@@ -112,6 +118,34 @@ const FINANCE_DEFAULTS = {
   amortizationRateAnnual: 0.02, // 2% per year
   interestRateAnnual: 0.03, // 3% per year
 } as const;
+
+// Fills in missing mock fields for older localStorage records without overwriting existing values
+function ensureMockCompleteness(a: Accommodation): Accommodation {
+  const next: Accommodation = { ...a };
+  // Basic numbers
+  if (next.antalRum == null) next.antalRum = Math.round(randomBetween(1, 5));
+  if (next.boarea == null) next.boarea = Math.round(randomBetween(30, 120));
+  if (next.kind !== "current") {
+    if (next.begartPris == null) next.begartPris = Math.round(randomBetween(2.5, 8.5) * 1_000_000);
+    if (next.driftkostnader == null) next.driftkostnader = Math.round(randomBetween(8_000, 28_000));
+  }
+  if (next.hyra == null) next.hyra = Math.round(randomBetween(2_500, 6_500));
+  if (next.tomtarea == null && Math.random() < 0.6) next.tomtarea = Math.round(randomBetween(100, 900));
+
+  // Commute metrics
+  const hasCommute = (next.metrics as any)?.commute != null;
+  if (!hasCommute) {
+    next.metrics = {
+      ...(next.metrics ?? {}),
+      commute: {
+        work: Math.round(randomBetween(18, 55)),
+        grocery: Math.round(randomBetween(3, 15)),
+        school: Math.round(randomBetween(6, 25)),
+      },
+    };
+  }
+  return next;
+}
 
 function computeDerived(a: Accommodation): Accommodation {
   const annualMaintenance = a.driftkostnader ?? 0;
@@ -154,12 +188,12 @@ export function useAccommodations() {
   useEffect(() => {
     const loaded = loadFromStorage();
     if (loaded && loaded.length > 0) {
-      const processed = loaded.map(computeDerived);
+      const processed = loaded.map(ensureMockCompleteness).map(computeDerived);
       setAccommodations(processed);
       saveToStorage(processed);
     } else {
       const seeded = seedMockData();
-      const processed = seeded.map(computeDerived);
+      const processed = seeded.map(ensureMockCompleteness).map(computeDerived);
       setAccommodations(processed);
       saveToStorage(processed);
     }
@@ -169,7 +203,7 @@ export function useAccommodations() {
     function commit(updater: (prev: Accommodation[]) => Accommodation[]) {
       setAccommodations((prev) => {
         const base = prev ?? [];
-        const next = updater(base).map(computeDerived);
+        const next = updater(base).map(ensureMockCompleteness).map(computeDerived);
         saveToStorage(next);
         return next;
       });
@@ -208,7 +242,13 @@ export function useAccommodations() {
         boarea: Math.round(randomBetween(30, 140)),
         biarea: Math.round(randomBetween(0, 25)),
         tomtarea: Math.round(randomBetween(0, 400)),
-        metrics: {},
+        metrics: {
+          commute: {
+            work: Math.round(randomBetween(18, 55)),
+            grocery: Math.round(randomBetween(3, 15)),
+            school: Math.round(randomBetween(6, 25)),
+          },
+        },
       };
       commit((prev) => [newItem, ...prev]);
       return newItem;
@@ -246,7 +286,13 @@ export function useAccommodations() {
         hyra: Math.round(randomBetween(2_500, 6_500)),
         antalRum: Math.round(randomBetween(1, 5)),
         boarea: Math.round(randomBetween(30, 120)),
-        metrics: {},
+        metrics: {
+          commute: {
+            work: Math.round(randomBetween(18, 55)),
+            grocery: Math.round(randomBetween(3, 15)),
+            school: Math.round(randomBetween(6, 25)),
+          },
+        },
       };
 
       commit((prev) => {

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Plus, MoreHorizontal, X } from "lucide-react";
+import { Building2, Plus, MoreHorizontal, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
 import { Drawer } from "vaul";
+import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -33,7 +34,7 @@ function formatSek(n?: number) {
 }
 
 export function AccommodationsScaffold() {
-  const { accommodations, addMock, addOrUpdateCurrentMock, remove } = useAccommodations();
+  const { accommodations, current, addMock, addOrUpdateCurrentMock, remove } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -47,6 +48,26 @@ export function AccommodationsScaffold() {
   const maintenancePerMonth = detailsItem ? Math.round((detailsItem.driftkostnader ?? 0) / 12) : 0;
   const isMd = useMediaQuery("(min-width: 768px)");
 
+  // Helpers for formatting and delta styling
+  type Commute = { work?: number; grocery?: number; school?: number };
+
+  function formatMinutes(n?: number) {
+    if (n == null) return "—";
+    return `${n} min`;
+  }
+
+  function formatDelta<T extends number>(delta: T | null | undefined, fmt: (n: number) => string) {
+    if (delta == null) return null;
+    if (delta === 0) return "±0";
+    const sign = delta > 0 ? "+" : "";
+    return `${sign}${fmt(Math.abs(delta))}`;
+  }
+
+  function deltaVariant(delta: number | null | undefined, goodWhenHigher: boolean): "good" | "bad" | "neutral" {
+    if (delta == null || delta === 0) return "neutral";
+    const favorable = goodWhenHigher ? delta > 0 : delta < 0;
+    return favorable ? "good" : "bad";
+  }
 
 
   return (
@@ -139,15 +160,98 @@ export function AccommodationsScaffold() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Totalt/mån: {formatSek(a.totalMonthlyCost)}</span>
-                    {a.kind !== "current" && (
-                      <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Pris: {formatSek(a.begartPris)}</span>
-                    )}
-                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">Hyra: {formatSek(a.hyra)}/mån</span>
-                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.antalRum ?? "—"} rum</span>
-                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.boarea ?? "—"} m²</span>
+                  {/* Key comparison metrics vs current */}
+                  <div className="mt-3">
+                    {(() => {
+                      const curr = current;
+                      const commuteA = ((a.metrics as any)?.commute ?? {}) as Commute;
+                      const commuteCurr = ((curr?.metrics as any)?.commute ?? {}) as Commute;
+
+                      const costDelta = curr?.totalMonthlyCost != null && a.totalMonthlyCost != null ? a.totalMonthlyCost - curr.totalMonthlyCost : null;
+                      const sizeDelta = curr?.boarea != null && a.boarea != null ? (a.boarea - curr.boarea) : null;
+                      const roomsDelta = curr?.antalRum != null && a.antalRum != null ? (a.antalRum - curr.antalRum) : null;
+                      const lotDelta = curr?.tomtarea != null && a.tomtarea != null ? (a.tomtarea - curr.tomtarea) : (a.tomtarea ?? null);
+
+                      const costVar = deltaVariant(costDelta, /* goodWhenHigher= */ false);
+                      const sizeVar = deltaVariant(sizeDelta, /* goodWhenHigher= */ true);
+                      const roomsVar = deltaVariant(roomsDelta, /* goodWhenHigher= */ true);
+                      const lotVar = deltaVariant(lotDelta, /* goodWhenHigher= */ true);
+
+                      const workDelta = commuteA.work != null && commuteCurr.work != null ? (commuteA.work - commuteCurr.work) : null;
+                      const groceryDelta = commuteA.grocery != null && commuteCurr.grocery != null ? (commuteA.grocery - commuteCurr.grocery) : null;
+                      const schoolDelta = commuteA.school != null && commuteCurr.school != null ? (commuteA.school - commuteCurr.school) : null;
+                      const workVar = deltaVariant(workDelta, false);
+                      const groceryVar = deltaVariant(groceryDelta, false);
+                      const schoolVar = deltaVariant(schoolDelta, false);
+
+
+                      return (
+                        <KeyValueGroup>
+                          <KeyValueRow
+                            icon={<CircleDollarSign className="h-3.5 w-3.5" />}
+                            label="Kostnad"
+                            value={<><span>{formatSek(a.totalMonthlyCost)}</span>{a.totalMonthlyCost != null && " / mån"}</>}
+                            deltaText={a.kind !== "current" && curr ? formatDelta(costDelta, (n) => formatSek(n)) : null}
+                            deltaTone={costVar}
+                          />
+
+                          <KeyValueRow
+                            icon={<Ruler className="h-3.5 w-3.5" />}
+                            label="Storlek"
+                            value={<>{a.boarea ?? "—"} m²</>}
+                            deltaText={a.kind !== "current" && curr ? formatDelta(sizeDelta, (n) => `${n} m²`) : null}
+                            deltaTone={sizeVar}
+                          />
+
+                          <KeyValueRow
+                            icon={<BedDouble className="h-3.5 w-3.5" />}
+                            label="Rum"
+                            value={a.antalRum ?? "—"}
+                            deltaText={a.kind !== "current" && curr ? formatDelta(roomsDelta, (n) => `${n}`) : null}
+                            deltaTone={roomsVar}
+                          />
+
+                          {a.tomtarea != null && (
+                            <KeyValueRow
+                              icon={<Square className="h-3.5 w-3.5" />}
+                              label="Area"
+                              value={<>{a.tomtarea} m²</>}
+                              deltaText={a.kind !== "current" && curr ? formatDelta(lotDelta, (n) => `${n} m²`) : null}
+                              deltaTone={lotVar}
+                            />
+                          )}
+
+                          <div className="pt-1 text-xs text-muted-foreground flex items-center gap-2">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>Pendling</span>
+                          </div>
+
+                          <KeyValueRow
+                            icon={<Briefcase className="h-3.5 w-3.5" />}
+                            label="Work"
+                            value={formatMinutes(commuteA.work)}
+                            deltaText={a.kind !== "current" && curr ? formatDelta(workDelta, (n) => `${n} min`) : null}
+                            deltaTone={workVar}
+                          />
+                          <KeyValueRow
+                            icon={<ShoppingCart className="h-3.5 w-3.5" />}
+                            label="Grocery"
+                            value={formatMinutes(commuteA.grocery)}
+                            deltaText={a.kind !== "current" && curr ? formatDelta(groceryDelta, (n) => `${n} min`) : null}
+                            deltaTone={groceryVar}
+                          />
+                          <KeyValueRow
+                            icon={<School className="h-3.5 w-3.5" />}
+                            label="School"
+                            value={formatMinutes(commuteA.school)}
+                            deltaText={a.kind !== "current" && curr ? formatDelta(schoolDelta, (n) => `${n} min`) : null}
+                            deltaTone={schoolVar}
+                          />
+                        </KeyValueGroup>
+                      );
+                    })()}
                   </div>
+
                   <div className="mt-2">
                     <Button variant="ghost" size="sm" onClick={() => { setDetailsId(a.id); setDetailsTab("basic"); }}>
                       Visa detaljer
