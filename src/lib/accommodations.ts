@@ -43,6 +43,14 @@ export type Accommodation = {
 };
 
 const STORAGE_KEY = "reskollen.accommodations.v1";
+const PLACES_STORAGE_KEY = "reskollen.places.v1";
+
+export type ImportantPlace = {
+  id: string;
+  label?: string;
+  address?: string;
+  icon?: string; // Lucide icon name, optional
+};
 
 function randomFrom<T>(arr: T[]) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -54,6 +62,41 @@ function randomBetween(min: number, max: number) {
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
+}
+
+function loadPlacesFromStorage(): ImportantPlace[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PLACES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ImportantPlace[];
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePlacesToStorage(list: ImportantPlace[]) {
+  try {
+    localStorage.setItem(PLACES_STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    // ignore
+  }
+}
+
+// Deterministic pseudo-random for mock commute generation
+function hashString(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function seededMinutes(accommodationId: string, placeId: string): number {
+  const h = hashString(`${accommodationId}::${placeId}`);
+  // 12..60 minutes (inclusive lower bound)
+  return 12 + (h % 49); // 12..60
 }
 
 const COLOR_CLASSES = [
@@ -230,12 +273,14 @@ export type CurrentHomeInput = {
 
 export function useAccommodations() {
   const [accommodations, setAccommodations] = useState<Accommodation[] | null>(null);
+  const [places, setPlaces] = useState<ImportantPlace[] | null>(null);
 
   // Load once on mount; seed if empty
   useEffect(() => {
     const loaded = loadFromStorage();
     if (loaded && loaded.length > 0) {
       const processed = loaded.map(ensureMockCompleteness).map(computeDerived);
+
       setAccommodations(processed);
       saveToStorage(processed);
     } else {
@@ -244,7 +289,30 @@ export function useAccommodations() {
       setAccommodations(processed);
       saveToStorage(processed);
     }
+    // load places
+    const loadedPlaces = loadPlacesFromStorage();
+    if (loadedPlaces && loadedPlaces.length > 0) setPlaces(loadedPlaces);
+    else setPlaces([{ id: generateId(), label: undefined, address: undefined }, { id: generateId(), label: undefined, address: undefined }]);
   }, []);
+  const commuteIndex = useMemo(() => {
+    const idx: Record<string, Record<string, number>> = {};
+    const accs = accommodations ?? [];
+    const ps = places ?? [];
+    for (const a of accs) {
+      const m: Record<string, number> = {};
+      for (const p of ps) {
+        if (!p.id) continue;
+        m[p.id] = seededMinutes(a.id, p.id);
+      }
+      idx[a.id] = m;
+    }
+    return idx;
+  }, [accommodations, places]);
+
+  function commuteFor(accommodationId: string): Record<string, number> {
+    return commuteIndex[accommodationId] ?? {};
+  }
+
 
   const api = useMemo(() => {
     function commit(updater: (prev: Accommodation[]) => Accommodation[]) {
@@ -263,6 +331,7 @@ export function useAccommodations() {
 
     function addMock() {
       const titles = [
+
         "Ljus 3:a med balkong",
         "Charmig 2:a nära vatten",
         "Nyproducerad 4:a",
@@ -311,6 +380,17 @@ export function useAccommodations() {
 
     function clear() {
       commit(() => []);
+    }
+
+    function replacePlaces(next: Array<Partial<ImportantPlace>>) {
+      const finalized: ImportantPlace[] = (next ?? []).map((p) => ({
+        id: p.id ?? generateId(),
+        label: p.label,
+        address: p.address,
+        icon: p.icon,
+      }));
+      setPlaces(finalized);
+      savePlacesToStorage(finalized);
     }
 
     // Create or update current accommodation from user-provided input (non-destructive)
@@ -397,10 +477,10 @@ export function useAccommodations() {
       });
     }
 
-    return { add, addMock, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser };
+    return { add, addMock, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces };
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;
-  return { accommodations: accommodations ?? [], current, ...api } as const;
+  return { accommodations: accommodations ?? [], current, places: places ?? [], commuteFor, ...api } as const;
 }
 

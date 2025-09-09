@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Plus, MoreHorizontal, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock } from "lucide-react";
+import { Building2, Plus, MoreHorizontal, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -11,7 +11,10 @@ import { Drawer } from "vaul";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { CurrencyInput, PercentInput } from "@/components/ui/formatted-input";
+import { GridPattern } from "@/components/magicui/grid-pattern";
+
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -47,9 +50,11 @@ function parseSwedishNumber(input?: string | null): number | undefined {
 }
 
 export function AccommodationsScaffold() {
-  const { accommodations, current, addMock, addOrUpdateCurrentMock, remove, upsertCurrentFromUser } = useAccommodations();
+  const { accommodations, current, places, commuteFor, addMock, addOrUpdateCurrentMock, remove, upsertCurrentFromUser, replacePlaces } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [placesOpen, setPlacesOpen] = useState(false);
+  const [placeRows, setPlaceRows] = useState<Array<{ id?: string; label: string; address: string; icon?: string }>>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const confirmItem = accommodations.find((x) => x.id === confirmId);
@@ -78,8 +83,40 @@ export function AccommodationsScaffold() {
     }
   }, [currentFormOpen, current]);
 
+  useEffect(() => {
+    if (!placesOpen) return;
+    if (places && places.length > 0) {
+      setPlaceRows(places.map(p => ({ id: p.id, label: p.label ?? "", address: p.address ?? "", icon: p.icon })));
+    } else {
+      setPlaceRows([{ label: "", address: "", icon: "Briefcase" }, { label: "", address: "", icon: "Briefcase" }]);
+    }
+  }, [placesOpen, places]);
+
+  const ICON_CHOICES = [
+    { value: "Briefcase", label: "Arbete – Portfölj" },
+    { value: "Building2", label: "Arbete – Byggnad" },
+    { value: "School", label: "Skola" },
+    { value: "Users", label: "Familj" },
+    { value: "ShoppingCart", label: "Butik" },
+  ] as const;
+
   // Helpers for formatting and delta styling
-  type Commute = { work?: number; grocery?: number; school?: number };
+  // Deterministic positions for important places (simulation on grid map)
+  function hashString(s: string): number {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function seededPlacePosition(id: string): { xPercent: number; yPercent: number } {
+    const h = hashString(id);
+    const x = 12 + (h % 76); // 12% .. 88%
+    const y = 18 + ((h >>> 8) % 64); // 18% .. 82%
+    return { xPercent: x, yPercent: y };
+  }
+
 
   function formatMinutes(n?: number) {
     if (n == null) return "—";
@@ -109,7 +146,7 @@ export function AccommodationsScaffold() {
             <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Jämför dina</h1>
             <p className="text-3xl font-extrabold leading-tight tracking-tight text-primary sm:text-4xl">drömbostäder</p>
             <p className="mt-3 max-w-prose text-sm text-muted-foreground">
-              Klistra in en Hemnet‑länk och se hur din drömbostad ligger till gentemot dina arbetsplatser.
+              Klistra in en Hemnet‑länk och se hur din drömbostad ligger till gentemot dina viktiga platser.
             </p>
           </div>
 
@@ -128,6 +165,9 @@ export function AccommodationsScaffold() {
             </Button>
             <Button type="button" variant="ghost" className="h-10 w-full shadow-sm" onClick={() => setCurrentFormOpen(true)}>
               Ställ in nuvarande bostad
+            </Button>
+            <Button type="button" variant="ghost" className="h-10 w-full shadow-sm" onClick={() => setPlacesOpen(true)}>
+              Ställ in viktiga platser
             </Button>
           </div>
 
@@ -197,9 +237,6 @@ export function AccommodationsScaffold() {
                   <div className="mt-3">
                     {(() => {
                       const curr = current;
-                      const commuteA = ((a.metrics as any)?.commute ?? {}) as Commute;
-                      const commuteCurr = ((curr?.metrics as any)?.commute ?? {}) as Commute;
-
                       const costDelta = curr?.totalMonthlyCost != null && a.totalMonthlyCost != null ? a.totalMonthlyCost - curr.totalMonthlyCost : null;
                       const sizeDelta = curr?.boarea != null && a.boarea != null ? (a.boarea - curr.boarea) : null;
                       const roomsDelta = curr?.antalRum != null && a.antalRum != null ? (a.antalRum - curr.antalRum) : null;
@@ -209,13 +246,6 @@ export function AccommodationsScaffold() {
                       const sizeVar = deltaVariant(sizeDelta, /* goodWhenHigher= */ true);
                       const roomsVar = deltaVariant(roomsDelta, /* goodWhenHigher= */ true);
                       const lotVar = deltaVariant(lotDelta, /* goodWhenHigher= */ true);
-
-                      const workDelta = commuteA.work != null && commuteCurr.work != null ? (commuteA.work - commuteCurr.work) : null;
-                      const groceryDelta = commuteA.grocery != null && commuteCurr.grocery != null ? (commuteA.grocery - commuteCurr.grocery) : null;
-                      const schoolDelta = commuteA.school != null && commuteCurr.school != null ? (commuteA.school - commuteCurr.school) : null;
-                      const workVar = deltaVariant(workDelta, false);
-                      const groceryVar = deltaVariant(groceryDelta, false);
-                      const schoolVar = deltaVariant(schoolDelta, false);
 
 
                       return (
@@ -259,27 +289,33 @@ export function AccommodationsScaffold() {
                             <span>Pendling</span>
                           </div>
 
-                          <KeyValueRow
-                            icon={<Briefcase className="h-3.5 w-3.5" />}
-                            label="Work"
-                            value={formatMinutes(commuteA.work)}
-                            deltaText={a.kind !== "current" && curr ? formatDelta(workDelta, (n) => `${n} min`) : null}
-                            deltaTone={workVar}
-                          />
-                          <KeyValueRow
-                            icon={<ShoppingCart className="h-3.5 w-3.5" />}
-                            label="Grocery"
-                            value={formatMinutes(commuteA.grocery)}
-                            deltaText={a.kind !== "current" && curr ? formatDelta(groceryDelta, (n) => `${n} min`) : null}
-                            deltaTone={groceryVar}
-                          />
-                          <KeyValueRow
-                            icon={<School className="h-3.5 w-3.5" />}
-                            label="School"
-                            value={formatMinutes(commuteA.school)}
-                            deltaText={a.kind !== "current" && curr ? formatDelta(schoolDelta, (n) => `${n} min`) : null}
-                            deltaTone={schoolVar}
-                          />
+                          {places.length === 0 && (
+                            <div className="text-xs text-muted-foreground">Inga viktiga platser ännu</div>
+                          )}
+                          {places.map((p) => {
+                            const accTimes = commuteFor(a.id);
+                            const currTimes = curr ? commuteFor(curr.id) : {};
+                            const aMin = accTimes[p.id];
+                            const cMin = curr ? currTimes[p.id] : undefined;
+                            const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
+                            const tone = deltaVariant(d as any, false);
+                            const iconName = p.icon ?? "Building2";
+                            const Icon = iconName === "Briefcase" ? Briefcase
+                              : iconName === "Building2" ? Building2
+                              : iconName === "School" ? School
+                              : iconName === "Users" ? Users
+                              : ShoppingCart;
+                            return (
+                              <KeyValueRow
+                                key={p.id}
+                                icon={<Icon className="h-3.5 w-3.5" />}
+                                label={p.label || "Plats"}
+                                value={formatMinutes(aMin)}
+                                deltaText={d != null ? formatDelta(d, (n) => `${n} min`) : null}
+                                deltaTone={tone}
+                              />
+                            );
+                          })}
                         </KeyValueGroup>
                       );
                     })()}
@@ -297,7 +333,8 @@ export function AccommodationsScaffold() {
         </aside>
 
         {/* Map/visualization area */}
-        <section className="relative h-[calc(100vh-12rem)] rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_1px_1px,theme(colors.border/25)_1px,transparent_1px)] [background-size:24px_24px]">
+        <section className="relative h-[calc(100vh-12rem)] rounded-2xl border border-border/60">
+          <GridPattern width={24} height={24} className="fill-border/25 stroke-border/25 dark:fill-border/15" />
           {/* Top info banner */}
           <div className="absolute left-6 right-6 top-6 z-10 rounded-xl border border-border/60 bg-card/80 p-4 text-sm shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
             <div className="font-medium">Dina bostäder</div>
@@ -327,6 +364,34 @@ export function AccommodationsScaffold() {
                 <div className="mt-2 w-max rounded-md bg-card/80 px-3 py-2 text-xs shadow-sm ring-1 ring-border/60 backdrop-blur supports-[backdrop-filter]:bg-card/60">
                   <div className="font-medium">{a.title}</div>
                   <div className="text-muted-foreground">{a.address}</div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Important place markers */}
+          {(places ?? []).filter((p) => p.id).map((p) => {
+            const { xPercent, yPercent } = seededPlacePosition(p.id!);
+            const iconName = p.icon ?? "Building2";
+            const Icon = iconName === "Briefcase" ? Briefcase
+              : iconName === "Building2" ? Building2
+              : iconName === "School" ? School
+              : iconName === "Users" ? Users
+              : ShoppingCart;
+            return (
+              <div
+                key={`place-${p.id}`}
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${xPercent}%`, top: `${yPercent}%` }}
+              >
+                <div
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full text-white shadow ring-2 ring-border/50 bg-slate-700",
+                    hasActive ? "opacity-80" : ""
+                  )}
+                  title={p.label ?? "Viktig plats"}
+                >
+                  <Icon className="h-4 w-4" />
                 </div>
               </div>
             );
@@ -431,10 +496,6 @@ export function AccommodationsScaffold() {
                       tomtarea: num(fd.get("tomtarea")),
                       currentValuation: valuation,
                       mortgages: loans.length ? { loans } : undefined,
-                      workplaces: {
-                        person1: { name: (fd.get("p1name") as string) || undefined, address: (fd.get("p1work") as string) || undefined },
-                        person2: { name: (fd.get("p2name") as string) || undefined, address: (fd.get("p2work") as string) || undefined },
-                      },
                     });
                     setCurrentFormOpen(false);
                   }}
@@ -504,29 +565,97 @@ export function AccommodationsScaffold() {
                     </div>
                   </div>
 
-                  <div className="sm:col-span-2 pt-2">
-                    <div className="text-sm font-medium mb-1">Arbetsplatser</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="p1name">Person 1</Label>
-                        <Input name="p1name" id="p1name" placeholder="Namn (valfritt)" />
-                        <Input name="p1work" id="p1work" placeholder="Arbetsplatsens adress" />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="p2name">Person 2</Label>
-                        <Input name="p2name" id="p2name" placeholder="Namn (valfritt)" />
-                        <Input name="p2work" id="p2work" placeholder="Arbetsplatsens adress" />
-                      </div>
-                    </div>
-                  </div>
 
                   <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
                     <Button type="button" variant="ghost" onClick={() => setCurrentFormOpen(false)}>Avbryt</Button>
                     <Button type="submit">Spara</Button>
+
                   </div>
                 </form>
 
                 <div className="h-2" />
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+
+        {/* Important places drawer */}
+        <Drawer.Root open={placesOpen} onOpenChange={setPlacesOpen} direction={isMd ? "right" : "bottom"}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[75vh] rounded-t-2xl md:inset-y-0 md:right-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+              <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                <Drawer.Handle className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border md:hidden shrink-0" />
+
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-semibold">Ställ in viktiga platser</h2>
+                    <p className="text-sm text-muted-foreground">Lägg till destinationer som du bryr dig om. Dessa kan användas för framtida pendling.</p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setPlacesOpen(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="h-4" />
+
+                <div className="flex-1 overflow-y-auto">
+                  <div className="space-y-3">
+                    {placeRows.map((row, idx) => (
+                      <div key={row.id ?? idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end border border-border/60 rounded-md p-3">
+                        <div className="space-y-1">
+                          <Label>Etikett</Label>
+                          <Input
+                            value={row.label}
+                            onChange={(e) => setPlaceRows((rs) => rs.map((r, i) => i === idx ? { ...r, label: e.target.value } : r))}
+                            placeholder={idx === 0 ? "Arbetsplats 1" : idx === 1 ? "Arbetsplats 2" : "T.ex. Skola"}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Adress</Label>
+                          <Input
+                            value={row.address}
+                            onChange={(e) => setPlaceRows((rs) => rs.map((r, i) => i === idx ? { ...r, address: e.target.value } : r))}
+                            placeholder="T.ex. Kungsgatan 1, Stockholm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Ikon</Label>
+                          <Select value={row.icon ?? ""} onChange={(e) => setPlaceRows((rs) => rs.map((r,i)=> i===idx ? { ...r, icon: e.target.value } : r))}>
+                            <option value="">Välj ikon…</option>
+                            {ICON_CHOICES.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="sm:col-span-3 flex justify-end pt-1">
+                          <Button type="button" variant="outline" size="sm" onClick={() => setPlaceRows((rs) => rs.filter((_, i) => i !== idx))}>Ta bort</Button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div>
+                      <Button type="button" variant="secondary" size="sm" onClick={() => setPlaceRows((rs) => [...rs, { label: "", address: "" }])}>Lägg till plats</Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-4" />
+                <div className="flex items-center justify-end gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setPlacesOpen(false)}>Avbryt</Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const cleaned = placeRows
+                        .map((p) => ({ id: p.id, label: p.label?.trim() || undefined, address: p.address?.trim() || undefined, icon: p.icon?.trim() || undefined }))
+                        .filter((p) => p.label || p.address);
+                      replacePlaces(cleaned.length > 0 ? cleaned : [{}, {}]);
+                      setPlacesOpen(false);
+                    }}
+                  >
+                    Spara
+                  </Button>
+                </div>
               </div>
             </Drawer.Content>
           </Drawer.Portal>
@@ -647,10 +776,28 @@ export function AccommodationsScaffold() {
 
                   {detailsTab === "travel" && (
                     <div className="space-y-3 text-sm">
-                      <div className="rounded-md border p-3">
-                        <div className="text-xs text-muted-foreground">Till jobbet</div>
-                        <div>23 min (SL) – byten: 1</div>
-                      </div>
+                      {places.length === 0 && (
+                        <div className="text-xs text-muted-foreground">Inga viktiga platser nnu</div>
+                      )}
+                      {places.map((p) => {
+                        const times = commuteFor(detailsItem!.id);
+                        const min = times[p.id];
+                        const iconName = p.icon ?? "Building2";
+                        const Icon = iconName === "Briefcase" ? Briefcase
+                          : iconName === "Building2" ? Building2
+                          : iconName === "School" ? School
+                          : iconName === "Users" ? Users
+                          : ShoppingCart;
+                        return (
+                          <div key={p.id} className="rounded-md border p-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <Icon className="h-4 w-4" />
+                              <div className="text-xs text-muted-foreground">{p.label || "Plats"}</div>
+                            </div>
+                            <div>{formatMinutes(min)}</div>
+                          </div>
+                        );
+                      })}
                       <div className="rounded-md border p-3">
                         <div className="text-xs text-muted-foreground">Till skolan</div>
                         <div>14 min cykel</div>
