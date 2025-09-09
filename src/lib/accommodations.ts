@@ -26,6 +26,9 @@ export type Accommodation = {
   biarea?: number; // m²
   tomtarea?: number; // m²
 
+  // Current home specific
+  currentValuation?: SEK; // Marknadsvärde (SEK) for current home
+
   // Derived/calculated fields (filled later)
   kontantinsats?: SEK; // not applicable for kind === "current"
   lan?: SEK;
@@ -158,10 +161,37 @@ function computeDerived(a: Accommodation): Accommodation {
   let rantaPerManad: number | undefined = undefined;
 
   if (a.kind !== "current" && a.begartPris && a.begartPris > 0) {
+    // Candidate purchase scenario (estimated)
     kontantinsats = Math.round(a.begartPris * FINANCE_DEFAULTS.downPaymentRate);
     lan = Math.max(0, a.begartPris - kontantinsats);
     amorteringPerManad = Math.round((lan * FINANCE_DEFAULTS.amortizationRateAnnual) / 12);
     rantaPerManad = Math.round((lan * FINANCE_DEFAULTS.interestRateAnnual) / 12);
+  } else if (a.kind === "current") {
+    // Current home with optional mortgage details
+    const mortgage = (a.metrics as any)?.mortgage as
+      | { loans?: { principal: number; interestRateAnnual: number }[] }
+      | undefined;
+    const loans = mortgage?.loans ?? [];
+    const totalDebt = loans.reduce((sum, l) => sum + (l?.principal ?? 0), 0);
+    const monthlyInterest = loans.reduce(
+      (sum, l) => sum + Math.round(((l?.principal ?? 0) * (l?.interestRateAnnual ?? 0)) / 12),
+      0
+    );
+
+    // Compute amortization rate based on LTV tiers if valuation is present
+    let amortRateAnnual = 0;
+    const valuation = a.currentValuation ?? 0;
+    if (valuation > 0 && totalDebt > 0) {
+      const ltv = totalDebt / valuation;
+      if (ltv > 0.7) amortRateAnnual = 0.02;
+      else if (ltv > 0.5) amortRateAnnual = 0.01;
+      else amortRateAnnual = 0;
+      // Note: additional 1% for high debt-to-income not applied (no income data yet)
+    }
+    const monthlyAmort = Math.round((totalDebt * amortRateAnnual) / 12);
+
+    amorteringPerManad = monthlyAmort > 0 ? monthlyAmort : undefined;
+    rantaPerManad = monthlyInterest > 0 ? monthlyInterest : undefined;
   }
 
   const totalMonthlyCost =
@@ -180,6 +210,23 @@ function computeDerived(a: Accommodation): Accommodation {
   };
 }
 
+
+export type CurrentHomeInput = {
+  title?: string;
+  address?: string;
+  hyra?: SEK;
+  driftkostnader?: SEK; // annual
+  antalRum?: number;
+  boarea?: number;
+  biarea?: number;
+  tomtarea?: number;
+  currentValuation?: SEK;
+  mortgages?: { loans: { principal: SEK; interestRateAnnual: number }[] };
+  workplaces?: {
+    person1?: { name?: string; address?: string };
+    person2?: { name?: string; address?: string };
+  };
+};
 
 export function useAccommodations() {
   const [accommodations, setAccommodations] = useState<Accommodation[] | null>(null);
@@ -266,6 +313,49 @@ export function useAccommodations() {
       commit(() => []);
     }
 
+    // Create or update current accommodation from user-provided input (non-destructive)
+    function upsertCurrentFromUser(input: CurrentHomeInput) {
+      commit((prev) => {
+        const existingIdx = prev.findIndex((a) => a.kind === "current");
+        const base: Accommodation = existingIdx >= 0 ? prev[existingIdx] : {
+          id: generateId(),
+          kind: "current",
+          title: "Nuvarande hem",
+          address: undefined,
+          position: { xPercent: Math.round(randomBetween(20, 80)), yPercent: Math.round(randomBetween(20, 75)) },
+          color: "bg-slate-600",
+        } as Accommodation;
+
+        const nextMetrics = {
+          ...(base.metrics ?? {}),
+          workplaces: input.workplaces ?? (base.metrics as any)?.workplaces,
+          mortgage: input.mortgages ?? (base.metrics as any)?.mortgages ?? (base.metrics as any)?.mortgage,
+        } as Record<string, unknown>;
+
+        const updated: Accommodation = {
+          ...base,
+          kind: "current",
+          title: input.title ?? base.title,
+          address: input.address ?? base.address,
+          hyra: input.hyra ?? base.hyra,
+          driftkostnader: input.driftkostnader ?? base.driftkostnader,
+          antalRum: input.antalRum ?? base.antalRum,
+          boarea: input.boarea ?? base.boarea,
+          biarea: input.biarea ?? base.biarea,
+          tomtarea: input.tomtarea ?? base.tomtarea,
+          currentValuation: input.currentValuation ?? base.currentValuation,
+          metrics: nextMetrics,
+        };
+
+        if (existingIdx >= 0) {
+          const arr = [...prev];
+          arr[existingIdx] = updated;
+          return arr;
+        }
+        return [updated, ...prev];
+      });
+    }
+
     // Create or update a single persistent current accommodation (mock data)
     function addOrUpdateCurrentMock() {
       const titles = ["Nuvarande hem", "Vårt hem", "Min bostad"];
@@ -307,7 +397,7 @@ export function useAccommodations() {
       });
     }
 
-    return { add, addMock, remove, update, clear, addOrUpdateCurrentMock };
+    return { add, addMock, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser };
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;

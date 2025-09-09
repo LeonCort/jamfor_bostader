@@ -9,6 +9,9 @@ import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
 import { Drawer } from "vaul";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { CurrencyInput, PercentInput } from "@/components/ui/formatted-input";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -33,8 +36,18 @@ function formatSek(n?: number) {
   return n.toLocaleString("sv-SE", { maximumFractionDigits: 0 }) + " kr";
 }
 
+// Swedish number helpers for inputs (comma decimals, space groupings)
+const nfSE2 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function parseSwedishNumber(input?: string | null): number | undefined {
+  if (input == null) return undefined;
+  const s = String(input).trim().replace(/\s/g, "").replace(",", ".");
+  if (!s) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export function AccommodationsScaffold() {
-  const { accommodations, current, addMock, addOrUpdateCurrentMock, remove } = useAccommodations();
+  const { accommodations, current, addMock, addOrUpdateCurrentMock, remove, upsertCurrentFromUser } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -47,6 +60,23 @@ export function AccommodationsScaffold() {
   const detailsItem = accommodations.find((x) => x.id === detailsId) ?? null;
   const maintenancePerMonth = detailsItem ? Math.round((detailsItem.driftkostnader ?? 0) / 12) : 0;
   const isMd = useMediaQuery("(min-width: 768px)");
+  const [currentFormOpen, setCurrentFormOpen] = useState(false);
+  const [loanRows, setLoanRows] = useState<Array<{ principal: string; rate: string }>>([{ principal: "", rate: "" }]);
+
+  useEffect(() => {
+    if (!currentFormOpen) return;
+    const existing = (((current?.metrics as any)?.mortgage?.loans) ?? []) as Array<{ principal?: number; interestRateAnnual?: number }>;
+    if (existing && existing.length > 0) {
+      setLoanRows(
+        existing.map((l) => ({
+          principal: l?.principal != null ? nfSE2.format(l.principal) : "",
+          rate: l?.interestRateAnnual != null ? nfSE2.format(l.interestRateAnnual * 100) : "",
+        }))
+      );
+    } else {
+      setLoanRows([{ principal: "", rate: "" }]);
+    }
+  }, [currentFormOpen, current]);
 
   // Helpers for formatting and delta styling
   type Commute = { work?: number; grocery?: number; school?: number };
@@ -95,6 +125,9 @@ export function AccommodationsScaffold() {
             </Button>
             <Button type="button" variant="outline" className="h-10 w-full shadow-sm" onClick={() => addOrUpdateCurrentMock()}>
               Lägg till nuvarande bostad (mock)
+            </Button>
+            <Button type="button" variant="ghost" className="h-10 w-full shadow-sm" onClick={() => setCurrentFormOpen(true)}>
+              Ställ in nuvarande bostad
             </Button>
           </div>
 
@@ -354,6 +387,151 @@ export function AccommodationsScaffold() {
           </AlertDialogContent>
         </AlertDialog>
 
+        {/* Current home setup drawer */}
+        <Drawer.Root open={currentFormOpen} onOpenChange={setCurrentFormOpen} direction={isMd ? "right" : "bottom"}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[80vh] rounded-t-2xl md:inset-y-0 md:right-0 md:inset-x-auto md:h-full md:w-[560px] md:rounded-t-none md:rounded-l-2xl">
+              <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                <Drawer.Handle className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border md:hidden shrink-0" />
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-semibold">Ställ in nuvarande bostad</h2>
+                    <p className="text-sm text-muted-foreground">Fyll i de fält du vill. Allt är valfritt.</p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setCurrentFormOpen(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <form
+                  className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.currentTarget as HTMLFormElement);
+                    const num = (v: FormDataEntryValue | null) => parseSwedishNumber((v as string) ?? undefined);
+                    const valuation = num(fd.get("valuation"));
+                    const loans = loanRows
+                      .map((r) => {
+                        const principal = parseSwedishNumber(r.principal) ?? NaN;
+                        const percent = parseSwedishNumber(r.rate) ?? NaN; // e.g. 2,35
+                        const interestRateAnnual = Number.isFinite(percent) ? percent / 100 : NaN;
+                        return { principal, interestRateAnnual };
+                      })
+                      .filter((l) => Number.isFinite(l.principal) && l.principal! > 0 && Number.isFinite(l.interestRateAnnual) && l.interestRateAnnual! > 0);
+
+                    upsertCurrentFromUser({
+                      title: (fd.get("title") as string) || undefined,
+                      address: (fd.get("address") as string) || undefined,
+                      hyra: num(fd.get("hyra")),
+                      driftkostnader: num(fd.get("driftkostnader")),
+                      antalRum: num(fd.get("antalRum")),
+                      boarea: num(fd.get("boarea")),
+                      biarea: num(fd.get("biarea")),
+                      tomtarea: num(fd.get("tomtarea")),
+                      currentValuation: valuation,
+                      mortgages: loans.length ? { loans } : undefined,
+                      workplaces: {
+                        person1: { name: (fd.get("p1name") as string) || undefined, address: (fd.get("p1work") as string) || undefined },
+                        person2: { name: (fd.get("p2name") as string) || undefined, address: (fd.get("p2work") as string) || undefined },
+                      },
+                    });
+                    setCurrentFormOpen(false);
+                  }}
+                >
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor="title">Titel</Label>
+                    <Input name="title" id="title" defaultValue={current?.title ?? "Nuvarande hem"} placeholder="Nuvarande hem" />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor="address">Adress</Label>
+                    <Input name="address" id="address" defaultValue={current?.address ?? ""} placeholder="T.ex. Sundbyberg, Stockholm" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="hyra">Hyra / mån (SEK)</Label>
+                    <CurrencyInput name="hyra" id="hyra" defaultValue={current?.hyra ?? ""} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="driftkostnader">Driftkostnader / år (SEK)</Label>
+                    <CurrencyInput name="driftkostnader" id="driftkostnader" defaultValue={current?.driftkostnader ?? ""} />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="antalRum">Antal rum</Label>
+                    <Input name="antalRum" id="antalRum" type="number" inputMode="numeric" defaultValue={current?.antalRum ?? ""} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="boarea">Boarea (m²)</Label>
+                    <Input name="boarea" id="boarea" type="number" inputMode="numeric" defaultValue={current?.boarea ?? ""} />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="biarea">Biarea (m²)</Label>
+                    <Input name="biarea" id="biarea" type="number" inputMode="numeric" defaultValue={current?.biarea ?? ""} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="tomtarea">Tomtarea (m²)</Label>
+                    <Input name="tomtarea" id="tomtarea" type="number" inputMode="numeric" defaultValue={current?.tomtarea ?? ""} />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2 pt-1">
+                    <Label htmlFor="valuation">Marknadsvärde (SEK)</Label>
+                    <CurrencyInput name="valuation" id="valuation" defaultValue={current?.currentValuation ?? ""} />
+                  </div>
+
+                  <div className="sm:col-span-2 pt-2">
+                    <div className="text-sm font-medium mb-1">Bolån</div>
+                    <div className="space-y-2">
+                      {loanRows.map((row, idx) => (
+                        <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                          <div className="space-y-1">
+                            <Label>Belopp (SEK)</Label>
+                            <CurrencyInput value={row.principal} onValueChange={({ formattedValue }) => setLoanRows((rs) => rs.map((r,i) => i===idx ? { ...r, principal: formattedValue } : r))} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Ränta (% år)</Label>
+                            <PercentInput value={row.rate} onValueChange={({ formattedValue }) => setLoanRows((rs) => rs.map((r,i) => i===idx ? { ...r, rate: formattedValue } : r))} />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => setLoanRows((rs) => rs.filter((_,i) => i!==idx))}>Ta bort</Button>
+                          </div>
+                        </div>
+                      ))}
+                      <div>
+                        <Button type="button" variant="secondary" size="sm" onClick={() => setLoanRows((rs) => [...rs, { principal: "", rate: "" }])}>Lägg till lån</Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2 pt-2">
+                    <div className="text-sm font-medium mb-1">Arbetsplatser</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="p1name">Person 1</Label>
+                        <Input name="p1name" id="p1name" placeholder="Namn (valfritt)" />
+                        <Input name="p1work" id="p1work" placeholder="Arbetsplatsens adress" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="p2name">Person 2</Label>
+                        <Input name="p2name" id="p2name" placeholder="Namn (valfritt)" />
+                        <Input name="p2work" id="p2work" placeholder="Arbetsplatsens adress" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setCurrentFormOpen(false)}>Avbryt</Button>
+                    <Button type="submit">Spara</Button>
+                  </div>
+                </form>
+
+                <div className="h-2" />
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+
         {/* Details drawer using Vaul */}
         <Drawer.Root open={!!detailsItem} onOpenChange={(o) => { if (!o) setDetailsId(null); }} direction={isMd ? "right" : "bottom"}>
           <Drawer.Portal>
@@ -446,16 +624,16 @@ export function AccommodationsScaffold() {
                             <div className="text-xs text-muted-foreground">Lån</div>
                             <div>{formatSek(detailsItem.lan)}</div>
                           </div>
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Amortering / mån</div>
-                            <div>{formatSek(detailsItem.amorteringPerManad)}</div>
-                          </div>
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Ränta / mån</div>
-                            <div>{formatSek(detailsItem.rantaPerManad)}</div>
-                          </div>
                         </>
                       )}
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Amortering / mån</div>
+                        <div>{formatSek(detailsItem.amorteringPerManad)}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Ränta / mån</div>
+                        <div>{formatSek(detailsItem.rantaPerManad)}</div>
+                      </div>
                       <div className="rounded-md border p-3">
                         <div className="text-xs text-muted-foreground">Hyra / mån</div>
                         <div>{formatSek(detailsItem.hyra)}</div>
