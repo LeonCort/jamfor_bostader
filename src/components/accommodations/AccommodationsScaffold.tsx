@@ -1,12 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { Building2, Plus, MoreHorizontal } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Building2, Plus, MoreHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
+import { Drawer } from "vaul";
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.matchMedia(query);
+    const handler = () => setMatches(m.matches);
+    handler();
+    if (m.addEventListener) m.addEventListener("change", handler);
+    else m.addListener(handler);
+    return () => {
+      if (m.removeEventListener) m.removeEventListener("change", handler);
+      else m.removeListener(handler);
+    };
+  }, [query]);
+  return matches;
+}
+
 
 function formatSek(n?: number) {
   if (n == null) return "—";
@@ -14,7 +33,7 @@ function formatSek(n?: number) {
 }
 
 export function AccommodationsScaffold() {
-  const { accommodations, current, addMock, addOrUpdateCurrentMock, remove } = useAccommodations();
+  const { accommodations, addMock, addOrUpdateCurrentMock, remove } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -22,6 +41,13 @@ export function AccommodationsScaffold() {
   const confirmItem = accommodations.find((x) => x.id === confirmId);
   const activeId = hoveredId ?? selectedId;
   const hasActive = !!activeId;
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsTab, setDetailsTab] = useState<"basic" | "cost" | "travel">("basic");
+  const detailsItem = accommodations.find((x) => x.id === detailsId) ?? null;
+  const maintenancePerMonth = detailsItem ? Math.round((detailsItem.driftkostnader ?? 0) / 12) : 0;
+  const isMd = useMediaQuery("(min-width: 768px)");
+
+
 
   return (
     <div className="mx-auto max-w-screen-2xl px-4 sm:px-6">
@@ -122,6 +148,11 @@ export function AccommodationsScaffold() {
                     <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.antalRum ?? "—"} rum</span>
                     <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1">{a.boarea ?? "—"} m²</span>
                   </div>
+                  <div className="mt-2">
+                    <Button variant="ghost" size="sm" onClick={() => { setDetailsId(a.id); setDetailsTab("basic"); }}>
+                      Visa detaljer
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -218,6 +249,142 @@ export function AccommodationsScaffold() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Details drawer using Vaul */}
+        <Drawer.Root open={!!detailsItem} onOpenChange={(o) => { if (!o) setDetailsId(null); }} direction={isMd ? "right" : "bottom"}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[70vh] rounded-t-2xl md:inset-y-0 md:right-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+              <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                <Drawer.Handle className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border md:hidden shrink-0" />
+
+                <div className="flex items-start justify-between gap-3 shrink-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn("inline-block size-2.5 rounded-full", detailsItem?.color ?? "bg-slate-500")} />
+                      <div className="font-semibold leading-tight">{detailsItem?.title}</div>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">{detailsItem?.address}</div>
+                  </div>
+                  <Button variant="ghost" size="icon" aria-label="Stäng" onClick={() => setDetailsId(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Tabs */}
+                <div className="mt-4 flex items-center gap-2 border-b border-border/60 shrink-0 bg-card">
+                  {([
+                    { key: "basic", label: "Grundinfo" },
+                    { key: "cost", label: "Kostnader" },
+                    { key: "travel", label: "Restid" },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.key}
+                      className={cn(
+                        "-mb-px select-none rounded-t px-3 py-2 text-xs font-medium transition",
+                        detailsTab === t.key
+                          ? "border-b-2 border-primary text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setDetailsTab(t.key)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab content */}
+                <div className="mt-4 grow overflow-y-auto">
+                  {detailsTab === "basic" && detailsItem && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Adress</div>
+                        <div>{detailsItem.address ?? "—"}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Antal rum</div>
+                        <div>{detailsItem.antalRum ?? "—"}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Boarea</div>
+                        <div>{detailsItem.boarea ?? "—"} m²</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Biarea</div>
+                        <div>{detailsItem.biarea ?? "—"} m²</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Tomtarea</div>
+                        <div>{detailsItem.tomtarea ?? "—"} m²</div>
+                      </div>
+                      {detailsItem.kind !== "current" && (
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Begärt pris</div>
+                          <div>{formatSek(detailsItem.begartPris)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {detailsTab === "cost" && detailsItem && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Totalt / mån</div>
+                        <div className="font-medium">{formatSek(detailsItem.totalMonthlyCost)}</div>
+                      </div>
+                      {detailsItem.kind !== "current" && (
+                        <>
+                          <div className="rounded-md border p-3">
+                            <div className="text-xs text-muted-foreground">Kontantinsats</div>
+                            <div>{formatSek(detailsItem.kontantinsats)}</div>
+                          </div>
+                          <div className="rounded-md border p-3">
+                            <div className="text-xs text-muted-foreground">Lån</div>
+                            <div>{formatSek(detailsItem.lan)}</div>
+                          </div>
+                          <div className="rounded-md border p-3">
+                            <div className="text-xs text-muted-foreground">Amortering / mån</div>
+                            <div>{formatSek(detailsItem.amorteringPerManad)}</div>
+                          </div>
+                          <div className="rounded-md border p-3">
+                            <div className="text-xs text-muted-foreground">Ränta / mån</div>
+                            <div>{formatSek(detailsItem.rantaPerManad)}</div>
+                          </div>
+                        </>
+                      )}
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Hyra / mån</div>
+                        <div>{formatSek(detailsItem.hyra)}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Drift / mån</div>
+                        <div>{formatSek(maintenancePerMonth)}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {detailsTab === "travel" && (
+                    <div className="space-y-3 text-sm">
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Till jobbet</div>
+                        <div>23 min (SL) – byten: 1</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Till skolan</div>
+                        <div>14 min cykel</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Till city</div>
+                        <div>18 min bil</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+
 
 
 
