@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Building2, Plus, MoreHorizontal, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock, Users, Asterisk } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock, Users, Asterisk } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAccommodations } from "@/lib/accommodations";
 import { parsePropertyUrl } from "@/lib/parse";
 import { cn } from "@/lib/utils";
@@ -39,10 +40,9 @@ function formatSek(n?: number) {
 
 
 export function AccommodationsScaffold() {
-  const { accommodations, current, places, commuteFor, addFromParsed, remove } = useAccommodations();
+  const { accommodations, current, places, commuteFor, addFromParsed, remove, update } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const confirmItem = accommodations.find((x) => x.id === confirmId);
   const activeId = hoveredId ?? selectedId;
@@ -52,6 +52,29 @@ export function AccommodationsScaffold() {
   const detailsItem = accommodations.find((x) => x.id === detailsId) ?? null;
   const maintenancePerMonth = detailsItem ? Math.round((detailsItem.driftkostnader ?? 0) / 12) : 0;
   const isMd = useMediaQuery("(min-width: 768px)");
+
+  // Edit drawer state
+  const [editId, setEditId] = useState<string | null>(null);
+  const editItem = accommodations.find((x) => x.id === editId) ?? null;
+  const [form, setForm] = useState<any>({});
+  useEffect(() => {
+    if (!editItem) return;
+    setForm({
+      title: editItem.title ?? "",
+      address: editItem.address ?? "",
+      imageUrl: editItem.imageUrl ?? "",
+      boarea: editItem.boarea ?? "",
+      antalRum: editItem.antalRum ?? "",
+      tomtarea: editItem.tomtarea ?? "",
+      hyra: editItem.hyra ?? "",
+      driftkostnader: editItem.driftkostnader ?? "",
+      begartPris: editItem.begartPris ?? "",
+      lan: editItem.lan ?? "",
+      kontantinsats: editItem.kontantinsats ?? "",
+      amorteringPerManad: editItem.amorteringPerManad ?? "",
+      rantaPerManad: editItem.rantaPerManad ?? "",
+    });
+  }, [editItem]);
 
   // URL input and parsing
   const [urlInput, setUrlInput] = useState("");
@@ -106,10 +129,10 @@ export function AccommodationsScaffold() {
 
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-4 sm:px-6">
-      <div className="grid gap-6 md:grid-cols-[360px_1fr] lg:grid-cols-[400px_1fr]">
+    <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 md:py-0 md:h-[calc(100dvh-3.5rem)] md:overflow-hidden">
+      <div className="grid md:h-full gap-6 md:grid-cols-[360px_1fr] lg:grid-cols-[400px_1fr]">
         {/* Left rail */}
-        <aside className="space-y-6 border-e border-border pe-6 py-6">
+        <aside className="space-y-6 border-e border-border pe-6 py-6 md:overflow-y-auto">
           <div>
             <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Jämför dina</h1>
             <p className="text-3xl font-extrabold leading-tight tracking-tight text-primary sm:text-4xl">drömbostäder</p>
@@ -128,9 +151,6 @@ export function AccommodationsScaffold() {
               className="w-full rounded-lg border border-transparent bg-secondary/70 px-3 py-2 text-sm text-foreground shadow-sm outline-none ring-0 transition placeholder:text-muted-foreground/80 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
             />
             <Button className="h-10 w-full shadow-sm" onClick={() => handleAnalyze()}>Analysera bostad</Button>
-            <Button type="button" variant="secondary" className="h-10 w-full shadow-sm" onClick={() => handleAnalyze(EXAMPLE_URL_1)}>
-              Testa med exempel‑URL
-            </Button>
 
           </div>
 
@@ -180,26 +200,25 @@ export function AccommodationsScaffold() {
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">{a.address}</div>
                     </div>
-                    <div className="shrink-0 -mt-1 -me-1">
-                      <DropdownMenu open={openMenuId === a.id} onOpenChange={(o) => setOpenMenuId(o ? a.id : null)}>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[10rem]">
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setOpenMenuId(null);
-                              setTimeout(() => setConfirmId(a.id), 0);
-                            }}
-                          >
-                            Ta bort
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <div className="shrink-0 -mt-1 -me-1 flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label="Redigera"
+                        onClick={() => setEditId(a.id)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        aria-label="Ta bort"
+                        onClick={() => setConfirmId(a.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
 
@@ -317,7 +336,7 @@ export function AccommodationsScaffold() {
         </aside>
 
         {/* Map/visualization area */}
-        <section className="relative h-[calc(100vh-12rem)] rounded-2xl border border-border/60">
+        <section className="relative md:h-full md:overflow-auto rounded-2xl border border-border/60">
           <GridPattern width={48} height={48} className="fill-border/45 stroke-border/60 dark:fill-border/40 dark:stroke-border/65" />
           {/* Subtle bottom-right glow to match concept image */}
           <div
@@ -415,7 +434,7 @@ export function AccommodationsScaffold() {
           </Button>
         </section>
 
-        <AlertDialog open={!!confirmId} onOpenChange={(open) => { if (!open) { setConfirmId(null); setOpenMenuId(null); } }}>
+        <AlertDialog open={!!confirmId} onOpenChange={(open) => { if (!open) { setConfirmId(null); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Ta bort bostad?</AlertDialogTitle>
@@ -443,6 +462,114 @@ export function AccommodationsScaffold() {
 
 
 
+
+        {/* Edit drawer (Vaul) */}
+        <Drawer.Root open={!!editItem} onOpenChange={(o) => { if (!o) setEditId(null); }} direction={isMd ? "right" : "bottom"}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[70vh] rounded-t-2xl md:inset-y-0 md:right-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+              <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                <Drawer.Handle className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border md:hidden shrink-0" />
+
+                <div className="flex items-start justify-between gap-3 shrink-0">
+                  <div>
+                    <div className="font-semibold leading-tight">Redigera bostad</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{editItem?.title}</div>
+                  </div>
+                  <Button variant="ghost" size="icon" aria-label="Stäng" onClick={() => setEditId(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <form
+                  className="mt-4 grow overflow-y-auto space-y-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!editId) return;
+                    const toNum = (v: any) => (v === "" || v == null ? undefined : Number(String(v).replace(/\s/g, "")));
+                    const driftRaw = toNum(form.driftkostnader);
+                    update(editId, {
+                      title: form.title || undefined,
+                      address: form.address || undefined,
+                      imageUrl: form.imageUrl || undefined,
+                      boarea: toNum(form.boarea),
+                      antalRum: toNum(form.antalRum),
+                      tomtarea: toNum(form.tomtarea),
+                      hyra: toNum(form.hyra),
+                      driftkostnader: driftRaw === 0 ? undefined : driftRaw,
+                      begartPris: toNum(form.begartPris),
+                      lan: toNum(form.lan),
+                      kontantinsats: toNum(form.kontantinsats),
+                      amorteringPerManad: toNum(form.amorteringPerManad),
+                      rantaPerManad: toNum(form.rantaPerManad),
+                    });
+                    setEditId(null);
+                  }}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="title">Titel</Label>
+                      <Input id="title" value={form.title ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, title: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="imageUrl">Bild-URL</Label>
+                      <Input id="imageUrl" value={form.imageUrl ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, imageUrl: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="address">Adress</Label>
+                      <Input id="address" value={form.address ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, address: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="boarea">Boarea (m²)</Label>
+                      <Input id="boarea" inputMode="numeric" value={form.boarea ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, boarea: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="antalRum">Rum</Label>
+                      <Input id="antalRum" inputMode="numeric" value={form.antalRum ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, antalRum: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="tomtarea">Tomtarea (m²)</Label>
+                      <Input id="tomtarea" inputMode="numeric" value={form.tomtarea ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, tomtarea: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="hyra">Hyra / mån</Label>
+                      <Input id="hyra" inputMode="numeric" value={form.hyra ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, hyra: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="driftkostnader">Drift / år</Label>
+                      <Input id="driftkostnader" inputMode="numeric" value={form.driftkostnader ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, driftkostnader: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="begartPris">Begärt pris</Label>
+                      <Input id="begartPris" inputMode="numeric" value={form.begartPris ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, begartPris: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="lan">Lån</Label>
+                      <Input id="lan" inputMode="numeric" value={form.lan ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, lan: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="kontantinsats">Kontantinsats</Label>
+                      <Input id="kontantinsats" inputMode="numeric" value={form.kontantinsats ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, kontantinsats: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="amorteringPerManad">Amortering / mån</Label>
+                      <Input id="amorteringPerManad" inputMode="numeric" value={form.amorteringPerManad ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, amorteringPerManad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="rantaPerManad">Ränta / mån</Label>
+                      <Input id="rantaPerManad" inputMode="numeric" value={form.rantaPerManad ?? ""} onChange={(e) => setForm((f: any) => ({ ...f, rantaPerManad: e.target.value }))} />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setEditId(null)}>Avbryt</Button>
+                    <Button type="submit">Spara</Button>
+                  </div>
+                </form>
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
 
 
         {/* Details drawer using Vaul */}
