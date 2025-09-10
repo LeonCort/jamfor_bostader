@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { PropertyData } from "./parse";
 
 // Core types for an accommodation/listing and extensible metrics
 export type SEK = number; // store as integer (SEK)
@@ -38,6 +39,8 @@ export type Accommodation = {
 
   // Main KPI: total monthly cost (all expenses combined)
   totalMonthlyCost?: SEK;
+  // Whether annual maintenance/driftkostnader was missing (so monthly total excludes it)
+  maintenanceUnknown?: boolean;
 
   // Extensible metrics: commute times, distances, etc.
   metrics?: Record<string, unknown>;
@@ -206,7 +209,8 @@ function ensureMockCompleteness(a: Accommodation): Accommodation {
 }
 
 function computeDerived(a: Accommodation): Accommodation {
-  const annualMaintenance = a.driftkostnader ?? 0;
+  const maintenanceUnknown = a.driftkostnader == null || a.driftkostnader === 0; // treat 0 as missing
+  const annualMaintenance = maintenanceUnknown ? 0 : (a.driftkostnader!);
   const maintenancePerMonth = Math.round(annualMaintenance / 12);
   const hyraPerManad = Math.round(a.hyra ?? 0);
 
@@ -262,6 +266,7 @@ function computeDerived(a: Accommodation): Accommodation {
     amorteringPerManad,
     rantaPerManad,
     totalMonthlyCost,
+    maintenanceUnknown,
   };
 }
 
@@ -493,7 +498,32 @@ export function useAccommodations() {
       });
     }
 
-    return { add, addMock, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces };
+    function addFromParsed(pd: PropertyData, sourceUrl?: string) {
+      const id = generateId();
+      const titleFromAddress = pd.address ? pd.address.split(",")[0] : null;
+      const title = titleFromAddress || (pd.rooms && pd.livingArea ? `${pd.rooms} rok, ${pd.livingArea} m²` : "Importerad bostad");
+      const item: Accommodation = {
+        id,
+        kind: "candidate",
+        title,
+        address: pd.address ?? undefined,
+        position: { xPercent: Math.round(randomBetween(15, 85)), yPercent: Math.round(randomBetween(15, 80)) },
+        color: randomFrom(COLOR_CLASSES),
+        imageUrl: pd.imageUrl ?? placeholderImageUrl(id),
+        begartPris: pd.price ?? undefined,
+        driftkostnader: pd.operatingCost ?? undefined,
+        hyra: pd.monthlyFee ?? undefined,
+        antalRum: pd.rooms ?? undefined,
+        boarea: pd.livingArea ?? undefined,
+        metrics: {
+          ...(sourceUrl ? { sourceUrl } : {}),
+        },
+      };
+      commit((prev) => [item, ...prev]);
+      return item;
+    }
+
+    return { add, addMock, addFromParsed, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces };
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;
