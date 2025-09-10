@@ -16,6 +16,7 @@ export type Accommodation = {
   lat?: number;
   lng?: number;
   color?: string; // Tailwind bg-... class for marker color
+  imageUrl?: string; // optional listing image URL (scraped/provided); placeholder used when missing
 
   // Base scraped inputs
   begartPris?: SEK; // Begärt pris (not applicable for kind === "current")
@@ -99,6 +100,12 @@ function seededMinutes(accommodationId: string, placeId: string): number {
   return 12 + (h % 49); // 12..60
 }
 
+function placeholderImageUrl(seed: string): string {
+  // Stable placeholder; using picsum with deterministic seed yields a consistent image per item
+  const s = seed.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'home';
+  return `https://picsum.photos/seed/${s}/640/360`;
+}
+
 const COLOR_CLASSES = [
   "bg-sky-500",
   "bg-emerald-500",
@@ -115,28 +122,32 @@ function seedMockData(): Accommodation[] {
     { title: "Radhus i Nacka", address: "Nacka, Stockholm" },
   ];
 
-  return samples.map((s, i) => ({
-    id: generateId(),
-    kind: "candidate",
-    title: s.title,
-    address: s.address,
-    position: { xPercent: 40 + i * 8 + randomBetween(-3, 3), yPercent: 40 + i * 6 + randomBetween(-3, 3) },
-    color: COLOR_CLASSES[i % COLOR_CLASSES.length],
-    begartPris: Math.round(randomBetween(2.8, 6.5) * 1_000_000),
-    driftkostnader: Math.round(randomBetween(10_000, 25_000)),
-    hyra: Math.round(randomBetween(2_800, 5_200)),
-    antalRum: 2 + (i % 3),
-    boarea: Math.round(randomBetween(45, 95)),
-    biarea: Math.round(randomBetween(0, 20)),
-    tomtarea: Math.round(randomBetween(0, 250)),
-    metrics: {
-      commute: {
-        work: Math.round(randomBetween(18, 55)),
-        grocery: Math.round(randomBetween(3, 15)),
-        school: Math.round(randomBetween(6, 25)),
+  return samples.map((s, i) => {
+    const id = generateId();
+    return {
+      id,
+      kind: "candidate",
+      title: s.title,
+      address: s.address,
+      position: { xPercent: 40 + i * 8 + randomBetween(-3, 3), yPercent: 40 + i * 6 + randomBetween(-3, 3) },
+      color: COLOR_CLASSES[i % COLOR_CLASSES.length],
+      imageUrl: placeholderImageUrl(id),
+      begartPris: Math.round(randomBetween(2.8, 6.5) * 1_000_000),
+      driftkostnader: Math.round(randomBetween(10_000, 25_000)),
+      hyra: Math.round(randomBetween(2_800, 5_200)),
+      antalRum: 2 + (i % 3),
+      boarea: Math.round(randomBetween(45, 95)),
+      biarea: Math.round(randomBetween(0, 20)),
+      tomtarea: Math.round(randomBetween(0, 250)),
+      metrics: {
+        commute: {
+          work: Math.round(randomBetween(18, 55)),
+          grocery: Math.round(randomBetween(3, 15)),
+          school: Math.round(randomBetween(6, 25)),
+        },
       },
-    },
-  }));
+    };
+  });
 }
 
 function loadFromStorage(): Accommodation[] | null {
@@ -177,6 +188,7 @@ function ensureMockCompleteness(a: Accommodation): Accommodation {
   }
   if (next.hyra == null) next.hyra = Math.round(randomBetween(2_500, 6_500));
   if (next.tomtarea == null && Math.random() < 0.6) next.tomtarea = Math.round(randomBetween(100, 900));
+  if (!next.imageUrl) next.imageUrl = placeholderImageUrl(next.id);
 
   // Commute metrics
   const hasCommute = (next.metrics as any)?.commute != null;
@@ -344,13 +356,15 @@ export function useAccommodations() {
         "Täby, Stockholm",
       ];
 
+      const id = generateId();
       const newItem: Accommodation = {
-        id: generateId(),
+        id,
         kind: "candidate",
         title: randomFrom(titles),
         address: randomFrom(places),
         position: { xPercent: Math.round(randomBetween(15, 85)), yPercent: Math.round(randomBetween(15, 80)) },
         color: randomFrom(COLOR_CLASSES),
+        imageUrl: placeholderImageUrl(id),
         begartPris: Math.round(randomBetween(2.5, 8.5) * 1_000_000),
         driftkostnader: Math.round(randomBetween(8_000, 28_000)),
         hyra: Math.round(randomBetween(2_500, 6_500)),
@@ -445,13 +459,15 @@ export function useAccommodations() {
         "Sundbyberg, Stockholm",
         "Bromma, Stockholm",
       ];
+      const id = generateId();
       const mock: Accommodation = {
-        id: generateId(),
+        id,
         kind: "current",
         title: randomFrom(titles),
         address: randomFrom(places),
         position: { xPercent: Math.round(randomBetween(20, 80)), yPercent: Math.round(randomBetween(20, 75)) },
         color: "bg-slate-600",
+        imageUrl: placeholderImageUrl(id),
         // Fields like begartPris/kontantinsats are intentionally omitted for current
         hyra: Math.round(randomBetween(2_500, 6_500)),
         antalRum: Math.round(randomBetween(1, 5)),

@@ -334,7 +334,12 @@ export function AccommodationsScaffold() {
 
         {/* Map/visualization area */}
         <section className="relative h-[calc(100vh-12rem)] rounded-2xl border border-border/60">
-          <GridPattern width={24} height={24} className="fill-border/25 stroke-border/25 dark:fill-border/15" />
+          <GridPattern width={48} height={48} className="fill-border/45 stroke-border/60 dark:fill-border/40 dark:stroke-border/65" />
+          {/* Subtle bottom-right glow to match concept image */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_90%_90%,theme(colors.primary/12),transparent_70%)]"
+          />
           {/* Top info banner */}
           <div className="absolute left-6 right-6 top-6 z-10 rounded-xl border border-border/60 bg-card/80 p-4 text-sm shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
             <div className="font-medium">Dina bostäder</div>
