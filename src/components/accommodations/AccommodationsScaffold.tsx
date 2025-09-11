@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Drawer } from "vaul";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
 
+import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
 import { GridPattern } from "@/components/magicui/grid-pattern";
 
 
@@ -52,6 +53,12 @@ export function AccommodationsScaffold() {
   const detailsItem = accommodations.find((x) => x.id === detailsId) ?? null;
   const maintenancePerMonth = detailsItem ? Math.round((detailsItem.driftkostnader ?? 0) / 12) : 0;
   const isMd = useMediaQuery("(min-width: 768px)");
+
+  // Transit drawer state
+  const [transitOpen, setTransitOpen] = useState(false);
+  const [transitCtx, setTransitCtx] = useState<TransitDrawerContext | null>(null);
+  function openTransit(ctx: TransitDrawerContext) { setTransitCtx(ctx); setTransitOpen(true); }
+
 
   // Edit drawer state
   const [editId, setEditId] = useState<string | null>(null);
@@ -311,7 +318,7 @@ export function AccommodationsScaffold() {
                                 key={p.id}
                                 icon={<Icon className="h-3.5 w-3.5" />}
                                 label={p.label || "Plats"}
-                                value={formatMinutes(aMin)}
+                                value={<button className="underline decoration-dotted hover:decoration-solid" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>{formatMinutes(aMin)}</button>}
                                 deltaText={d != null ? formatDelta(d, (n) => `${n} min`) : null}
                                 deltaTone={tone}
                               />
@@ -466,7 +473,7 @@ export function AccommodationsScaffold() {
         {/* Edit drawer (Vaul) */}
         <Drawer.Root open={!!editItem} onOpenChange={(o) => { if (!o) setEditId(null); }} direction={isMd ? "right" : "bottom"}>
           <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
             <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[70vh] rounded-t-2xl md:inset-y-0 md:right-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
               <div className="mx-auto max-w-screen-md h-full flex flex-col">
                 <Drawer.Handle className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border md:hidden shrink-0" />
@@ -575,7 +582,7 @@ export function AccommodationsScaffold() {
         {/* Details drawer using Vaul */}
         <Drawer.Root open={!!detailsItem} onOpenChange={(o) => { if (!o) setDetailsId(null); }} direction={isMd ? "right" : "bottom"}>
           <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
             <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[70vh] rounded-t-2xl md:inset-y-0 md:right-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
               <div className="mx-auto max-w-screen-md h-full flex flex-col">
                 <Drawer.Handle className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border md:hidden shrink-0" />
@@ -726,6 +733,9 @@ export function AccommodationsScaffold() {
         </Drawer.Root>
 
 
+
+
+        <TransitDrawer open={transitOpen} onOpenChange={setTransitOpen} context={transitCtx} />
 
 
       </div>

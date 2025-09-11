@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAccommodations } from "@/lib/accommodations";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { CircleDollarSign, Ruler, BedDouble, Square, Clock, Award, ArrowUpRight, ArrowDownRight, Asterisk } from "lucide-react";
+import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
 
 function formatSek(n?: number) {
   if (n == null) return "—";
@@ -46,6 +47,10 @@ export default function ComparePage() {
     tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-red-600" : "text-muted-foreground";
 
   const bestMonthlyCost = useMemo(() => bestValue(columns.map(c => c.totalMonthlyCost), /* goodWhenHigher= */ false), [columns]);
+  const [transitOpen, setTransitOpen] = useState(false);
+  const [transitCtx, setTransitCtx] = useState<TransitDrawerContext | null>(null);
+  function openTransit(ctx: TransitDrawerContext) { setTransitCtx(ctx); setTransitOpen(true); }
+
 
   if (!columns.length) {
     return (
@@ -65,7 +70,7 @@ export default function ComparePage() {
 
       <div className="rounded-xl border bg-card">
         {/* Sticky header inside card (desktop) */}
-        <div className="hidden sm:block sticky top-14 z-30 bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b">
+        <div className="hidden sm:block sticky top-14 z-30 bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border">
           <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
             <div className="px-4 py-3 text-xs text-muted-foreground">&nbsp;</div>
             {columns.map((a) => (
@@ -436,7 +441,7 @@ export default function ComparePage() {
 
         {/* House details */}
         <section>
-          <div className="px-4 py-3 text-sm font-medium text-foreground border-t">Husdetaljer</div>
+          <div className="px-4 py-3 text-sm font-medium text-foreground border-t border-border">Husdetaljer</div>
           <div>
             {/* Mobile header */}
             <div className="sm:hidden grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
@@ -541,7 +546,7 @@ export default function ComparePage() {
 
         {/* Costs */}
         <section>
-          <div className="px-4 py-3 text-sm font-medium text-foreground border-t">Kostnader</div>
+          <div className="px-4 py-3 text-sm font-medium text-foreground border-t border-border">Kostnader</div>
           <div>
             {/* Mobile header */}
             <div className="sm:hidden grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
@@ -757,7 +762,7 @@ export default function ComparePage() {
 
         {/* Transit */}
         <section>
-          <div className="px-4 py-3 text-sm font-medium text-foreground border-t">Pendling</div>
+          <div className="px-4 py-3 text-sm font-medium text-foreground border-t border-border">Pendling</div>
           <div>
             {/* Mobile header */}
             <div className="sm:hidden grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
@@ -795,7 +800,7 @@ export default function ComparePage() {
                           const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                           const tone = deltaVariant(d as any, false);
                           return (
-                            <div key={a.id + p.id + "to"} className="px-4 py-4">
+                            <div key={a.id + p.id + "to"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
                               <HoverCard>
                                 <HoverCardTrigger asChild>
                                   <div className="group">
@@ -836,7 +841,7 @@ export default function ComparePage() {
                           const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                           const tone = deltaVariant(d as any, false);
                           return (
-                            <div key={a.id + p.id + "from"} className="px-4 py-4">
+                            <div key={a.id + p.id + "from"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: p.address ?? p.label, destination: a.address ?? a.title, leaveAt: p.leaveAt, direction: "from" })}>
                               <HoverCard>
                                 <HoverCardTrigger asChild>
                                   <div className="group">
@@ -878,7 +883,7 @@ export default function ComparePage() {
                         const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                         const tone = deltaVariant(d as any, false);
                         return (
-                          <div key={a.id + p.id + "to-desktop"} className="px-4 py-4">
+                          <div key={a.id + p.id + "to-desktop"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
                             <HoverCard>
                               <HoverCardTrigger asChild>
                                 <div className="group">
@@ -916,7 +921,7 @@ export default function ComparePage() {
                         const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                         const tone = deltaVariant(d as any, false);
                         return (
-                          <div key={a.id + p.id + "from-desktop"} className="px-4 py-4">
+                          <div key={a.id + p.id + "from-desktop"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: p.address ?? p.label, destination: a.address ?? a.title, leaveAt: p.leaveAt, direction: "from" })}>
                             <HoverCard>
                               <HoverCardTrigger asChild>
                                 <div className="group">
@@ -949,6 +954,7 @@ export default function ComparePage() {
           </div>
         </section>
       </div>
+        <TransitDrawer open={transitOpen} onOpenChange={setTransitOpen} context={transitCtx} />
     </div>
   );
 }

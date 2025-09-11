@@ -115,7 +115,7 @@ export const RouteOptionsList = ({
       {routes.map(route => {
       const transportIcons = getTransportIcons(route.description);
       const isSelected = selectedRoute === route.id;
-      return <motion.div key={route.id} onClick={() => onRouteSelect(route.id)} className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-lg ${isSelected ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20' : 'border-slate-600 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700/50'}`} whileHover={{
+      return <motion.div key={route.id} onClick={() => onRouteSelect(route.id)} className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-lg ${isSelected ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20' : 'border-border hover:border-border bg-card hover:bg-muted'}`} whileHover={{
         scale: 1.01
       }} whileTap={{
         scale: 0.99
@@ -124,35 +124,35 @@ export const RouteOptionsList = ({
               <div className="flex items-center space-x-3">
                 <Bus className="h-5 w-5 text-blue-400" />
                 <div>
-                  <span className="font-semibold text-lg text-slate-100">
+                  <span className="font-semibold text-lg text-foreground">
                     {route.departureTime}–{route.arrivalTime}
                   </span>
                   {route.hasAlert && <AlertTriangle className="h-4 w-4 text-amber-400 ml-2 inline" />}
                 </div>
               </div>
-              <span className="font-semibold text-lg text-slate-100">{route.duration}</span>
+              <span className="font-semibold text-lg text-foreground">{route.duration}</span>
             </div>
             
             <div className="flex items-center space-x-2 mb-3">
-              <Footprints className="h-4 w-4 text-slate-400" />
-              <span className="text-slate-500">→</span>
+              <Footprints className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground/70">→</span>
               
               {transportIcons.map((icon, index) => <div key={index} className="flex items-center space-x-2">
                   <div className={`px-2 py-1 rounded text-xs font-medium shadow-lg ${icon === '40' ? 'bg-pink-500 text-white shadow-pink-500/30' : icon === 'SJ InterCity' ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-blue-500 text-white shadow-blue-500/30'}`}>
                     {icon}
                   </div>
-                  {index < transportIcons.length - 1 && <span className="text-slate-500">→</span>}
+                  {index < transportIcons.length - 1 && <span className="text-muted-foreground/70">→</span>}
                 </div>)}
               
-              <span className="text-slate-500">→</span>
-              <Footprints className="h-4 w-4 text-slate-400" />
+              <span className="text-muted-foreground/70">→</span>
+              <Footprints className="h-4 w-4 text-muted-foreground" />
             </div>
             
             {route.departureLocation && <div className="space-y-1">
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   <span>{route.departureTime} från {route.departureLocation}</span>
                 </p>
-                {route.walkingTime && <p className="text-sm text-slate-300 flex items-center space-x-1">
+                {route.walkingTime && <p className="text-sm text-muted-foreground flex items-center space-x-1">
                     <Footprints className="h-3 w-3" />
                     <span>{route.walkingTime}</span>
                   </p>}
