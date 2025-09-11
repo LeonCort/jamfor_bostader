@@ -57,7 +57,7 @@ export default function SettingsPage() {
   const [active, setActive] = useState<'current' | 'places'>('current');
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 py-6">
+    <div className="mx-auto max-w-[1200px] px-4 sm:px-6 py-6">
 
 
       <div className="grid gap-6 sm:grid-cols-[220px_1fr] items-start">

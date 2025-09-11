@@ -296,7 +296,7 @@ export default function ComparePage() {
                           <HoverCardTrigger asChild>
                             <div className="group">
                               <div className="flex items-center gap-1 leading-none">
-                                <div className="text-4xl font-extrabold inline-flex items-center gap-1">
+                                <div className="text-3xl font-extrabold inline-flex items-center gap-1">
                                   {a.totalMonthlyCost != null ? a.totalMonthlyCost.toLocaleString("sv-SE") : "—"}
                                   {a.maintenanceUnknown ? (
                                     <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">

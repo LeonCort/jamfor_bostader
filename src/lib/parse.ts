@@ -3,8 +3,11 @@ export interface PropertyData {
   monthlyFee: number | null; // hyra/avgift per month
   operatingCost: number | null; // annual drift
   address: string | null;
+  postort: string | null; // e.g., stadsdel/postort
+  kommun: string | null;  // e.g., Uppsala kommun
   livingArea: number | null; // boarea (m²)
   rooms: number | null; // antal rum
+  constructionYear: number | null; // byggår
   imageUrl: string | null;
 }
 
@@ -56,6 +59,8 @@ export function parsePropertyUrl(url: string): PropertyData | null {
   const operatingCost = ocRaw === 0 ? null : ocRaw;
 
   const address = getFirst(p, ["adress", "gatuadress", "Adress", "address", "gata"]); // already decoded by URL
+  const postort = getFirst(p, ["postort", "Postort", "post_ort", "ort", "stadsdel", "område", "omrade", "omr"]);
+  const kommun = getFirst(p, ["kommun", "Kommun", "municipality", "kommunnamn"]);
 
   const livingArea = toNumberOrNull(getFirst(p, ["boarea", "Boarea", "area", "livingarea"]))
     ?? toNumberOrNull(getFirst(p, ["boyta", "yta"]));
@@ -65,7 +70,10 @@ export function parsePropertyUrl(url: string): PropertyData | null {
 
   const imageUrl = getFirst(p, ["bild", "Bild", "image", "imgurl", "imageurl"]) ?? null;
 
-  const hasAny = [price, monthlyFee, operatingCost, address, livingArea, rooms, imageUrl]
+  const constructionYear = toNumberOrNull(getFirst(p, ["byggår", "byggar", "byggar", "constructionyear", "yearbuilt", "byggyear"]))
+    ?? toNumberOrNull(getFirst(p, ["byggar", "bygg_ar"]));
+
+  const hasAny = [price, monthlyFee, operatingCost, address, postort, kommun, livingArea, rooms, imageUrl, constructionYear]
     .some((v) => v != null);
   if (!hasAny) return null;
 
@@ -74,8 +82,11 @@ export function parsePropertyUrl(url: string): PropertyData | null {
     monthlyFee: monthlyFee ?? null,
     operatingCost: operatingCost ?? null,
     address: address ?? null,
+    postort: postort ?? null,
+    kommun: kommun ?? null,
     livingArea: livingArea ?? null,
     rooms: rooms ?? null,
+    constructionYear: constructionYear ?? null,
     imageUrl: imageUrl ?? null,
   };
 }

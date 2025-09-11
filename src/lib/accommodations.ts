@@ -12,6 +12,8 @@ export type Accommodation = {
   kind?: "candidate" | "current"; // default: candidate
   title: string; // e.g., "3 rok i Sundbyberg"
   address?: string;
+  postort?: string; // e.g., stadsdel/postort
+  kommun?: string;  // e.g., Uppsala kommun
   // Position for mock map (percentages of container). We keep lat/lng optional for future real map.
   position: { xPercent: number; yPercent: number };
   lat?: number;
@@ -27,6 +29,7 @@ export type Accommodation = {
   boarea?: number; // m²
   biarea?: number; // m²
   tomtarea?: number; // m²
+  constructionYear?: number; // byggår
 
   // Current home specific
   currentValuation?: SEK; // Marknadsvärde (SEK) for current home
@@ -145,6 +148,7 @@ function seedMockData(): Accommodation[] {
       boarea: Math.round(randomBetween(45, 95)),
       biarea: Math.round(randomBetween(0, 20)),
       tomtarea: Math.round(randomBetween(0, 250)),
+      constructionYear: Math.round(randomBetween(1945, 2022)),
       metrics: {
         commute: {
           work: Math.round(randomBetween(18, 55)),
@@ -194,6 +198,7 @@ function ensureMockCompleteness(a: Accommodation): Accommodation {
   }
   if (next.hyra == null) next.hyra = Math.round(randomBetween(2_500, 6_500));
   if (next.tomtarea == null && Math.random() < 0.6) next.tomtarea = Math.round(randomBetween(100, 900));
+  if (next.constructionYear == null) next.constructionYear = Math.round(randomBetween(1945, 2022));
   if (!next.imageUrl) next.imageUrl = placeholderImageUrl(next.id);
 
   // Commute metrics
@@ -535,6 +540,8 @@ export function useAccommodations() {
         kind: "candidate",
         title,
         address: pd.address ?? undefined,
+        postort: pd.postort ?? undefined,
+        kommun: pd.kommun ?? undefined,
         position: { xPercent: Math.round(randomBetween(15, 85)), yPercent: Math.round(randomBetween(15, 80)) },
         color: randomFrom(COLOR_CLASSES),
         imageUrl: pd.imageUrl ?? placeholderImageUrl(id),
@@ -543,6 +550,7 @@ export function useAccommodations() {
         hyra: pd.monthlyFee ?? undefined,
         antalRum: pd.rooms ?? undefined,
         boarea: pd.livingArea ?? undefined,
+        constructionYear: pd.constructionYear ?? undefined,
         metrics: {
           ...(sourceUrl ? { sourceUrl } : {}),
         },
