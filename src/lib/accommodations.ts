@@ -54,6 +54,9 @@ export type ImportantPlace = {
   label?: string;
   address?: string;
   icon?: string; // Lucide icon name, optional
+  // Typical Monday commute timing preferences
+  arriveBy?: string; // 'HH:MM' local time to arrive at the place
+  leaveAt?: string;  // 'HH:MM' local time to leave the place
 };
 
 function randomFrom<T>(arr: T[]) {
@@ -330,6 +333,29 @@ export function useAccommodations() {
     return commuteIndex[accommodationId] ?? {};
   }
 
+  // Two-direction mock commute times per place: to (arriveBy) and from (leaveAt)
+  const commuteIndexTwo = useMemo(() => {
+    const idx: Record<string, Record<string, { to: number; from: number }>> = {};
+    const accs = accommodations ?? [];
+    const ps = places ?? [];
+    for (const a of accs) {
+      const m: Record<string, { to: number; from: number }> = {};
+      for (const p of ps) {
+        if (!p.id) continue;
+        m[p.id] = {
+          to: seededMinutes(a.id, `${p.id}::to`),
+          from: seededMinutes(a.id, `${p.id}::from`),
+        };
+      }
+      idx[a.id] = m;
+    }
+    return idx;
+  }, [accommodations, places]);
+
+  function commuteForTwo(accommodationId: string): Record<string, { to: number; from: number }> {
+    return commuteIndexTwo[accommodationId] ?? {};
+  }
+
 
   const api = useMemo(() => {
     function commit(updater: (prev: Accommodation[]) => Accommodation[]) {
@@ -407,6 +433,8 @@ export function useAccommodations() {
         label: p.label,
         address: p.address,
         icon: p.icon,
+        arriveBy: p.arriveBy,
+        leaveAt: p.leaveAt,
       }));
       setPlaces(finalized);
       savePlacesToStorage(finalized);
@@ -527,6 +555,6 @@ export function useAccommodations() {
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;
-  return { accommodations: accommodations ?? [], current, places: places ?? [], commuteFor, ...api } as const;
+  return { accommodations: accommodations ?? [], current, places: places ?? [], commuteFor, commuteForTwo, ...api } as const;
 }
 

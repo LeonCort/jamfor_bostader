@@ -33,7 +33,7 @@ function bestValue(values: Array<number | undefined>, goodWhenHigher: boolean): 
 }
 
 export default function ComparePage() {
-  const { accommodations, current, places, commuteFor } = useAccommodations();
+  const { accommodations, current, places, commuteForTwo } = useAccommodations();
 
   const columns = useMemo(() => {
     const list = [...accommodations];
@@ -780,30 +780,70 @@ export default function ComparePage() {
             ) : (
               places.map((p) => (
                 <div key={p.id}>
-                  {/* Mobile row */}
+                  {/* Mobile rows: To and From */}
                   <div className="sm:hidden">
-                    <div className="px-4 pt-3 text-xs text-muted-foreground flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>{p.label || "Plats"}</span> <span className="text-[11px] text-muted-foreground/80">min</span></div>
+                    {/* To place */}
+                    <div className="px-4 pt-3 text-xs text-muted-foreground flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Till {p.label || "Plats"}</span> <span className="text-[11px] text-muted-foreground/80">min</span></div>
+                    <div className="px-4 text-[11px] text-muted-foreground/80">Anländ senast {p.arriveBy ?? "—"}</div>
                     <div className="overflow-x-auto">
                       <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
                         {columns.map((a) => {
-                          const accTimes = commuteFor(a.id);
-                          const currTimes = current ? commuteFor(current.id) : {} as Record<string, number>;
-                          const aMin = accTimes[p.id];
-                          const cMin = current ? currTimes[p.id] : undefined;
+                          const accTimes = commuteForTwo(a.id);
+                          const currTimes = current ? commuteForTwo(current.id) : {} as Record<string, { to: number; from: number }>;
+                          const aMin = accTimes[p.id]?.to;
+                          const cMin = current ? currTimes[p.id]?.to : undefined;
                           const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                           const tone = deltaVariant(d as any, false);
                           return (
-                            <div key={a.id + p.id} className="px-4 py-4">
+                            <div key={a.id + p.id + "to"} className="px-4 py-4">
                               <HoverCard>
                                 <HoverCardTrigger asChild>
                                   <div className="group">
                                     <div className="flex items-center gap-1 leading-none">
                                       <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
                                       {(() => {
-                                        const best = bestValue(columns.map((c) => {
-                                          const times = commuteFor(c.id);
-                                          return times[p.id];
-                                        }), /* goodWhenHigher= */ false);
+                                        const best = bestValue(columns.map((c) => commuteForTwo(c.id)[p.id]?.to), /* goodWhenHigher= */ false);
+                                        const isBest = aMin != null && best != null && aMin === best;
+                                        if (isBest) return <Award className="h-3.5 w-3.5 text-emerald-600" />;
+                                        if (a.kind === "current" || d == null || d === 0) return null;
+                                        const up = d > 0;
+                                        const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                        return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                      })()}
+                                    </div>
+                                  </div>
+                                </HoverCardTrigger>
+                                <HoverCardContent className="text-sm">
+                                  {d != null ? formatDelta(d, (n) => `${n} min`) : "Nuvarande"}
+                                </HoverCardContent>
+                              </HoverCard>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* From place */}
+                    <div className="px-4 pt-4 text-xs text-muted-foreground flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Från {p.label || "Plats"}</span> <span className="text-[11px] text-muted-foreground/80">min</span></div>
+                    <div className="px-4 text-[11px] text-muted-foreground/80">Lämna vid {p.leaveAt ?? "—"}</div>
+                    <div className="overflow-x-auto">
+                      <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
+                        {columns.map((a) => {
+                          const accTimes = commuteForTwo(a.id);
+                          const currTimes = current ? commuteForTwo(current.id) : {} as Record<string, { to: number; from: number }>;
+                          const aMin = accTimes[p.id]?.from;
+                          const cMin = current ? currTimes[p.id]?.from : undefined;
+                          const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
+                          const tone = deltaVariant(d as any, false);
+                          return (
+                            <div key={a.id + p.id + "from"} className="px-4 py-4">
+                              <HoverCard>
+                                <HoverCardTrigger asChild>
+                                  <div className="group">
+                                    <div className="flex items-center gap-1 leading-none">
+                                      <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
+                                      {(() => {
+                                        const best = bestValue(columns.map((c) => commuteForTwo(c.id)[p.id]?.from), /* goodWhenHigher= */ false);
                                         const isBest = aMin != null && best != null && aMin === best;
                                         if (isBest) return <Award className="h-3.5 w-3.5 text-emerald-600" />;
                                         if (a.kind === "current" || d == null || d === 0) return null;
@@ -825,29 +865,65 @@ export default function ComparePage() {
                     </div>
                   </div>
 
-                  {/* Desktop row */}
+                  {/* Desktop rows: To and From */}
                   <div className="hidden sm:block overflow-x-auto">
+                    {/* To place */}
                     <div className="min-w-[720px] grid" style={{ gridTemplateColumns: gridTemplate }}>
-                      <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>{p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min</div></div>
+                      <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Till {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Anländ senast {p.arriveBy ?? "—"}</div></div>
                       {columns.map((a) => {
-                        const accTimes = commuteFor(a.id);
-                        const currTimes = current ? commuteFor(current.id) : {} as Record<string, number>;
-                        const aMin = accTimes[p.id];
-                        const cMin = current ? currTimes[p.id] : undefined;
+                        const accTimes = commuteForTwo(a.id);
+                        const currTimes = current ? commuteForTwo(current.id) : {} as Record<string, { to: number; from: number }>;
+                        const aMin = accTimes[p.id]?.to;
+                        const cMin = current ? currTimes[p.id]?.to : undefined;
                         const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                         const tone = deltaVariant(d as any, false);
                         return (
-                          <div key={a.id + p.id} className="px-4 py-4">
+                          <div key={a.id + p.id + "to-desktop"} className="px-4 py-4">
                             <HoverCard>
                               <HoverCardTrigger asChild>
                                 <div className="group">
                                   <div className="flex items-center gap-1 leading-none">
                                     <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
                                     {(() => {
-                                      const best = bestValue(columns.map((c) => {
-                                        const times = commuteFor(c.id);
-                                        return times[p.id];
-                                      }), /* goodWhenHigher= */ false);
+                                      const best = bestValue(columns.map((c) => commuteForTwo(c.id)[p.id]?.to), /* goodWhenHigher= */ false);
+                                      const isBest = aMin != null && best != null && aMin === best;
+                                      if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
+                                      if (a.kind === "current" || d == null || d === 0) return null;
+                                      const up = d > 0;
+                                      const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                      return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                                    })()}
+                                  </div>
+                                </div>
+                              </HoverCardTrigger>
+                              <HoverCardContent className="text-sm">
+                                {d != null ? formatDelta(d, (n) => `${n} min`) : "Nuvarande"}
+                              </HoverCardContent>
+                            </HoverCard>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* From place */}
+                    <div className="min-w-[720px] grid" style={{ gridTemplateColumns: gridTemplate }}>
+                      <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Från {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Lämna vid {p.leaveAt ?? "—"}</div></div>
+                      {columns.map((a) => {
+                        const accTimes = commuteForTwo(a.id);
+                        const currTimes = current ? commuteForTwo(current.id) : {} as Record<string, { to: number; from: number }>;
+                        const aMin = accTimes[p.id]?.from;
+                        const cMin = current ? currTimes[p.id]?.from : undefined;
+                        const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
+                        const tone = deltaVariant(d as any, false);
+                        return (
+                          <div key={a.id + p.id + "from-desktop"} className="px-4 py-4">
+                            <HoverCard>
+                              <HoverCardTrigger asChild>
+                                <div className="group">
+                                  <div className="flex items-center gap-1 leading-none">
+                                    <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
+                                    {(() => {
+                                      const best = bestValue(columns.map((c) => commuteForTwo(c.id)[p.id]?.from), /* goodWhenHigher= */ false);
                                       const isBest = aMin != null && best != null && aMin === best;
                                       if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
                                       if (a.kind === "current" || d == null || d === 0) return null;
