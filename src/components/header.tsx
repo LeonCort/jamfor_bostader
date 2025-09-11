@@ -13,6 +13,8 @@ export function Header() {
     ? "settings"
     : pathname.startsWith("/compare")
     ? "compare"
+    : pathname.startsWith("/map")
+    ? "map"
     : "overview";
 
   return (
@@ -30,13 +32,14 @@ export function Header() {
               value={current}
               onValueChange={(v) => {
                 if (v === current) return;
-                const href = v === "overview" ? "/" : v === "compare" ? "/compare" : "/settings";
+                const href = v === "overview" ? "/" : v === "map" ? "/map" : v === "compare" ? "/compare" : "/settings";
                 router.push(href);
               }}
             >
               <div className="relative">
                 <TabsList>
                   <TabsTab value="overview">Översikt</TabsTab>
+                  <TabsTab value="map">Karta</TabsTab>
                   <TabsTab value="compare">Jämför</TabsTab>
                   <TabsTab value="settings">Inställningar</TabsTab>
                 </TabsList>

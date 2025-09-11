@@ -11,10 +11,13 @@ import { parsePropertyUrl } from "@/lib/parse";
 import { cn } from "@/lib/utils";
 import { Drawer } from "vaul";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
+import { Select } from "@/components/ui/select";
+
 
 import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
-import { GridPattern } from "@/components/magicui/grid-pattern";
 
+import MapEmbed from "@/components/map/MapEmbed";
+import { buildPlaceEmbedUrl, buildDirectionsEmbedUrl, pickEmbedKey } from "@/lib/mapsEmbedUrl";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -40,14 +43,13 @@ function formatSek(n?: number) {
 }
 
 
-export function AccommodationsScaffold() {
+export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) {
   const { accommodations, current, places, commuteFor, addFromParsed, remove, update } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const confirmItem = accommodations.find((x) => x.id === confirmId);
   const activeId = hoveredId ?? selectedId;
-  const hasActive = !!activeId;
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [detailsTab, setDetailsTab] = useState<"basic" | "cost" | "travel">("basic");
   const detailsItem = accommodations.find((x) => x.id === detailsId) ?? null;
@@ -56,6 +58,19 @@ export function AccommodationsScaffold() {
 
   // Transit drawer state
   const [transitOpen, setTransitOpen] = useState(false);
+  // Google Maps Embed state
+  const resolvedKey = pickEmbedKey(mapsApiKey);
+  const selected = accommodations.find((x) => x.id === selectedId) ?? current ?? accommodations[0] ?? null;
+  const selectedQuery = selected?.address || selected?.title;
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | "">("");
+  const selectedPlace = (places ?? []).find((p) => p.id === selectedPlaceId) ?? null;
+  const destinationQuery = selectedPlace?.address || selectedPlace?.label;
+  const embedSrc = resolvedKey && selectedQuery
+    ? (destinationQuery
+        ? buildDirectionsEmbedUrl(resolvedKey, selectedQuery, destinationQuery, "transit")
+        : buildPlaceEmbedUrl(resolvedKey, selectedQuery))
+    : undefined;
+
   const [transitCtx, setTransitCtx] = useState<TransitDrawerContext | null>(null);
   function openTransit(ctx: TransitDrawerContext) { setTransitCtx(ctx); setTransitOpen(true); }
 
@@ -86,7 +101,6 @@ export function AccommodationsScaffold() {
   // URL input and parsing
   const [urlInput, setUrlInput] = useState("");
   const urlInputRef = useRef<HTMLInputElement>(null);
-  const EXAMPLE_URL_1 = "https://ikanobank.se/bolan/hemnet?sida=2&typ=Villa&pris=7500000&drift=45700&manadsavg=0&boarea=232&antalrum=8&adress=Gamla%20Uppsala%20352&bild=https%3A%2F%2Fbilder.hemnet.se%2Fimages%2Fitemgallery_L%2F54%2Fa4%2F54a4dd49662494a063bbb5c9e88f7e8c.jpg";
   function handleAnalyze(u?: string) {
     const s = (u ?? urlInput).trim();
     if (!s) return;
@@ -99,22 +113,6 @@ export function AccommodationsScaffold() {
 
 
   // Helpers for formatting and delta styling
-  // Deterministic positions for important places (simulation on grid map)
-  function hashString(s: string): number {
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
-  }
-  function seededPlacePosition(id: string): { xPercent: number; yPercent: number } {
-    const h = hashString(id);
-    const x = 12 + (h % 76); // 12% .. 88%
-    const y = 18 + ((h >>> 8) % 64); // 18% .. 82%
-    return { xPercent: x, yPercent: y };
-  }
-
 
   function formatMinutes(n?: number) {
     if (n == null) return "—";
@@ -342,90 +340,37 @@ export function AccommodationsScaffold() {
           </div>
         </aside>
 
-        {/* Map/visualization area */}
-        <section className="relative md:h-full md:overflow-auto rounded-2xl border border-border/60">
-          <GridPattern width={48} height={48} className="fill-border/45 stroke-border/60 dark:fill-border/40 dark:stroke-border/65" />
-          {/* Subtle bottom-right glow to match concept image */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_90%_90%,theme(colors.primary/12),transparent_70%)]"
-          />
-          {/* Top info banner */}
-          <div className="absolute left-6 right-6 top-6 z-10 rounded-xl border border-border/60 bg-card/80 p-4 text-sm shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
-            <div className="font-medium">Dina bostäder</div>
-            <div className="text-muted-foreground">Kartan visar dina tillagda bostäder. Senare kompletterar vi med restider, kostnader m.m.</div>
+        {/* Google Maps Embed panel */}
+        <section className="relative md:h-full md:overflow-hidden rounded-2xl border border-border/60">
+          <MapEmbed src={embedSrc} className="absolute inset-0 rounded-2xl" />
+
+          {/* Top info banner (moved to bottom-left to avoid covering map info window) */}
+          <div className="absolute left-6 bottom-6 z-20 max-w-lg rounded-xl border border-border/60 bg-card/80 p-4 text-sm shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
+            <div className="font-medium">Google Maps</div>
+            <div className="text-muted-foreground">Klicka på en bostad till vänster för att visa platsen i kartan.</div>
+            {!resolvedKey && (
+              <div className="mt-2 text-xs text-destructive">
+                Saknar API‑nyckel. Lägg till <code>google-map-api-key</code> eller <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> i .env.local.
+              </div>
+            )}
           </div>
 
-          {/* Accommodation markers */}
-          {accommodations.map((a) => {
-            const isActive = activeId === a.id;
-            return (
-              <div
-                key={a.id}
-                className="absolute -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${a.position.xPercent}%`, top: `${a.position.yPercent}%` }}
+          {/* Viktiga platser selector (over the map, higher z-index) */}
+          <div className="absolute top-6 right-6 z-30 rounded-xl border border-border/60 bg-card/90 p-2 text-sm shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/70">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Viktig plats</span>
+              <Select
+                value={selectedPlaceId}
+                onChange={(e) => setSelectedPlaceId(e.target.value)}
+                className="h-8 px-2 py-1 min-w-56"
               >
-                <div
-                  className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full text-white shadow transition-transform",
-                    a.color ?? "bg-slate-500",
-                    isActive ? "ring-4 ring-primary scale-110" : "ring-2 ring-border/50",
-                    hasActive && !isActive ? "opacity-60" : ""
-                  )}
-                  title={a.title}
-                >
-                  <Building2 className="h-4 w-4" />
-                </div>
-                <div className="mt-2 w-max rounded-md bg-card/80 px-3 py-2 text-xs shadow-sm ring-1 ring-border/60 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-                  <div className="font-medium">{a.title}</div>
-                  <div className="text-muted-foreground">{a.address}</div>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Important place markers */}
-          {(places ?? []).filter((p) => p.id).map((p) => {
-            const { xPercent, yPercent } = seededPlacePosition(p.id!);
-            const iconName = p.icon ?? "Building2";
-            const Icon = iconName === "Briefcase" ? Briefcase
-              : iconName === "Building2" ? Building2
-              : iconName === "School" ? School
-              : iconName === "Users" ? Users
-              : ShoppingCart;
-            return (
-              <div
-                key={`place-${p.id}`}
-                className="absolute -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${xPercent}%`, top: `${yPercent}%` }}
-              >
-                <div
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full text-white shadow ring-2 ring-border/50 bg-slate-700",
-                    hasActive ? "opacity-80" : ""
-                  )}
-                  title={p.label ?? "Viktig plats"}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Legend */}
-          <div className="absolute left-6 bottom-6 rounded-lg border border-border/60 bg-card/80 p-3 text-xs shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60">
-            <div className="font-medium">Bostäder</div>
-            <div className="mt-2 space-y-1">
-              {accommodations.map((a) => {
-                const isActive = activeId === a.id;
-                return (
-
-                  <div key={a.id} className="flex items-center gap-2">
-                    <span className={cn("inline-block size-2.5 rounded-full", a.color ?? "bg-slate-500", hasActive && !isActive && "opacity-60")} />
-                    <span className={cn("text-muted-foreground", hasActive && !isActive && "opacity-60")}>{a.title}</span>
-                  </div>
-                );
-              })}
+                <option value="">Ingen</option>
+                {places.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label || p.address || "Plats"}
+                  </option>
+                ))}
+              </Select>
             </div>
           </div>
 
