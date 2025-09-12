@@ -150,49 +150,6 @@ export default function ComparePage() {
         <div ref={scrollerRef} className="overflow-x-auto" onScroll={() => { const s = scrollerRef.current, h = headerContentRef.current; if (!s || !h) return; h.style.transform = `translateX(${-s.scrollLeft}px)`; }}>
 
 
-        {/* Sticky header inside card */}
-        <div className="sticky top-14 z-30 mb-2 sm:mb-3 hidden">
-          <div className="bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border">
-          <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
-            <div className="px-4 py-3 text-xs text-muted-foreground">&nbsp;</div>
-            {columns.map((a) => (
-              <div key={a.id} className="px-4 py-3">
-                <HoverCard>
-                  <HoverCardTrigger asChild>
-                    <div className="cursor-default">
-                      {a.imageUrl ? (
-                        <img src={a.imageUrl} alt={a.title} className="h-16 w-full object-cover rounded-md mb-2" />
-                      ) : (
-                        <div className="h-16 w-full bg-muted rounded-md mb-2" />
-                      )}
-                      <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{a.kind === "current" ? "Nuvarande" : "Potentiell"}</div>
-                      <div className="font-medium leading-tight line-clamp-2">{a.title}</div>
-                      {a.address ? <div className="text-xs text-muted-foreground line-clamp-1">{a.address}</div> : null}
-                    </div>
-                  </HoverCardTrigger>
-                  <HoverCardContent align="center" className="w-72">
-                    <div>
-                      {a.imageUrl ? (
-                        <img src={a.imageUrl} alt={a.title} className="h-28 w-full object-cover rounded mb-3" />
-                      ) : null}
-                      <div className="font-semibold leading-tight">{a.title}</div>
-                      {a.address ? <div className="text-xs text-muted-foreground mb-3">{a.address}</div> : null}
-                      <KeyValueGroup>
-                        <KeyValueRow icon={<CircleDollarSign className="h-3.5 w-3.5" />} label="Kostnad" value={<>{formatSek(a.totalMonthlyCost)}{a.totalMonthlyCost != null && " / mån"}</>} />
-                        <KeyValueRow icon={<Ruler className="h-3.5 w-3.5" />} label="Storlek" value={<>{a.boarea ?? "—"} m²</>} />
-                        <KeyValueRow icon={<BedDouble className="h-3.5 w-3.5" />} label="Rum" value={a.antalRum ?? "—"} />
-                        {a.tomtarea != null ? (
-                          <KeyValueRow icon={<Square className="h-3.5 w-3.5" />} label="Tomtareal" value={<>{a.tomtarea} m²</>} />
-                        ) : null}
-                      </KeyValueGroup>
-                    </div>
-                  </HoverCardContent>
-                </HoverCard>
-              </div>
-            ))}
-          </div>
-          </div>
-          </div>
           <div className="min-w-full sm:min-w-[960px]">
 
 
@@ -819,6 +776,7 @@ export default function ComparePage() {
                                     <div className="flex items-center gap-1 leading-none">
                                       <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
                                       {(() => {
+
                                         const best = bestValue(columns.map((c) => commuteForTwo(c.id)[p.id]?.to), /* goodWhenHigher= */ false);
                                         const isBest = aMin != null && best != null && aMin === best;
                                         if (isBest) return <Award className="h-3.5 w-3.5 text-emerald-600" />;
@@ -876,7 +834,7 @@ export default function ComparePage() {
                   <div className="block">
                     {/* To place */}
                     <div className="min-w-[720px] grid hover:bg-muted/20 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
-                      <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Till {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Anländ senast {p.arriveBy ?? "—"}</div></div>
+                      <div className="px-4 py-4 text-sm text-foreground/80 sticky left-0 z-20 bg-card"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Till {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Anländ senast {p.arriveBy ?? "—"}</div></div>
                       {columns.map((a) => {
                         const accTimes = commuteForTwo(a.id);
                         const currTimes = current ? commuteForTwo(current.id) : {} as Record<string, { to: number; from: number }>;
@@ -908,7 +866,7 @@ export default function ComparePage() {
 
                     {/* From place */}
                     <div className="min-w-[720px] grid hover:bg-muted/20 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
-                      <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Från {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Lämna vid {p.leaveAt ?? "—"}</div></div>
+                      <div className="px-4 py-4 text-sm text-foreground/80 sticky left-0 z-20 bg-card"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Från {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Lämna vid {p.leaveAt ?? "—"}</div></div>
                       {columns.map((a) => {
                         const accTimes = commuteForTwo(a.id);
                         const currTimes = current ? commuteForTwo(current.id) : {} as Record<string, { to: number; from: number }>;
