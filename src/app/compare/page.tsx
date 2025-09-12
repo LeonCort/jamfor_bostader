@@ -1,25 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useAccommodations } from "@/lib/accommodations";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
+import CellDetailDrawer, { CellContext } from "@/components/compare/CellDetailDrawer";
 import { CircleDollarSign, Ruler, BedDouble, Square, Clock, Award, ArrowUpRight, ArrowDownRight, Asterisk } from "lucide-react";
 import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
+import CompareRow from "@/components/compare/CompareRow";
+import CompareCell from "@/components/compare/CompareCell";
 
 function formatSek(n?: number) {
   if (n == null) return "—";
   return n.toLocaleString("sv-SE", { maximumFractionDigits: 0 }) + " kr";
-}
-function formatMinutes(n?: number) {
-  if (n == null) return "—";
-  return `${n} min`;
-}
-function formatDelta<T extends number>(delta: T | null | undefined, fmt: (n: number) => string) {
-  if (delta == null) return null;
-  if (delta === 0) return "±0";
-  const sign = delta > 0 ? "+" : "";
-  return `${sign}${fmt(Math.abs(delta))}`;
 }
 function deltaVariant(delta: number | null | undefined, goodWhenHigher: boolean): "good" | "bad" | "neutral" {
   if (delta == null || delta === 0) return "neutral";
@@ -42,6 +35,9 @@ export default function ComparePage() {
     return list;
   }, [accommodations]);
   const gridTemplate = useMemo(() => `minmax(200px,1fr) repeat(${columns.length}, minmax(180px,1fr))`, [columns.length]);
+  const [cellOpen, setCellOpen] = useState(false);
+  const [cellCtx, setCellCtx] = useState<CellContext | null>(null);
+  function openCell(ctx: CellContext) { setCellCtx(ctx); setCellOpen(true); }
   const mobileTemplate = useMemo(() => `repeat(${columns.length}, minmax(160px,1fr))`, [columns.length]);
   const toneClass = (tone: "good" | "bad" | "neutral") =>
     tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-red-600" : "text-muted-foreground";
@@ -50,6 +46,41 @@ export default function ComparePage() {
   const [transitOpen, setTransitOpen] = useState(false);
   const [transitCtx, setTransitCtx] = useState<TransitDrawerContext | null>(null);
   function openTransit(ctx: TransitDrawerContext) { setTransitCtx(ctx); setTransitOpen(true); }
+
+  // Detached sticky header syncing with horizontal scroller
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const headerViewportRef = useRef<HTMLDivElement | null>(null);
+  const headerContentRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep header horizontally aligned with the body scroller
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const header = headerContentRef.current;
+    if (!scroller || !header) return;
+    const sync = () => {
+      header.style.transform = `translateX(${-scroller.scrollLeft}px)`;
+    };
+    sync();
+    scroller.addEventListener("scroll", sync, { passive: true } as any);
+    return () => scroller.removeEventListener("scroll", sync);
+  }, [columns.length]);
+
+  // Ensure the header viewport matches the scroller width (prevents misalignment)
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const viewport = headerViewportRef.current;
+    if (!scroller || !viewport) return;
+    const setWidth = () => { viewport.style.width = `${scroller.clientWidth}px`; };
+    setWidth();
+    const ResizeObs = (window as any).ResizeObserver;
+    const ro = ResizeObs ? new ResizeObs(setWidth) : null;
+    ro?.observe(scroller);
+    window.addEventListener("resize", setWidth);
+    return () => {
+      ro?.disconnect?.();
+      window.removeEventListener("resize", setWidth);
+    };
+  }, [columns.length]);
 
 
   if (!columns.length) {
@@ -69,8 +100,59 @@ export default function ComparePage() {
 
 
       <div className="rounded-xl border bg-card">
-        {/* Sticky header inside card (desktop) */}
-        <div className="hidden sm:block sticky top-14 z-30 bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border">
+        {/* Detached sticky header */}
+        <div className="sticky top-14 z-30 mb-2 sm:mb-3">
+          <div className="bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border">
+            <div ref={headerViewportRef} className="overflow-hidden">
+              <div ref={headerContentRef} className="grid" style={{ gridTemplateColumns: gridTemplate }}>
+                <div className="px-4 py-3 text-xs text-muted-foreground">&nbsp;</div>
+                {columns.map((a) => (
+                  <div key={a.id} className="px-4 py-3">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="cursor-default">
+                          {a.imageUrl ? (
+                            <img src={a.imageUrl} alt={a.title} className="h-16 w-full object-cover rounded-md mb-2" />
+                          ) : (
+                            <div className="h-16 w-full bg-muted rounded-md mb-2" />
+                          )}
+                          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{a.kind === "current" ? "Nuvarande" : "Potentiell"}</div>
+                          <div className="font-medium leading-tight line-clamp-2">{a.title}</div>
+                          {a.address ? <div className="text-xs text-muted-foreground line-clamp-1">{a.address}</div> : null}
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent align="center" className="w-72">
+                        <div>
+                          {a.imageUrl ? (
+                            <img src={a.imageUrl} alt={a.title} className="h-28 w-full object-cover rounded mb-3" />
+                          ) : null}
+                          <div className="font-semibold leading-tight">{a.title}</div>
+                          {a.address ? <div className="text-xs text-muted-foreground mb-3">{a.address}</div> : null}
+                          <KeyValueGroup>
+                            <KeyValueRow icon={<CircleDollarSign className="h-3.5 w-3.5" />} label="Kostnad" value={<>{formatSek(a.totalMonthlyCost)}{a.totalMonthlyCost != null && " / mån"}</>} />
+                            <KeyValueRow icon={<Ruler className="h-3.5 w-3.5" />} label="Storlek" value={<>{a.boarea ?? "—"} m²</>} />
+                            <KeyValueRow icon={<BedDouble className="h-3.5 w-3.5" />} label="Rum" value={a.antalRum ?? "—"} />
+                            {a.tomtarea != null ? (
+                              <KeyValueRow icon={<Square className="h-3.5 w-3.5" />} label="Tomtareal" value={<>{a.tomtarea} m²</>} />
+                            ) : null}
+                          </KeyValueGroup>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Shared horizontal scroller for desktop and up */
+        }
+        <div ref={scrollerRef} className="overflow-x-auto" onScroll={() => { const s = scrollerRef.current, h = headerContentRef.current; if (!s || !h) return; h.style.transform = `translateX(${-s.scrollLeft}px)`; }}>
+
+
+        {/* Sticky header inside card */}
+        <div className="sticky top-14 z-30 mb-2 sm:mb-3 hidden">
+          <div className="bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border">
           <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
             <div className="px-4 py-3 text-xs text-muted-foreground">&nbsp;</div>
             {columns.map((a) => (
@@ -109,14 +191,17 @@ export default function ComparePage() {
               </div>
             ))}
           </div>
-        </div>
+          </div>
+          </div>
+          <div className="min-w-full sm:min-w-[960px]">
+
 
         {/* Overall */}
         <section>
           <div className="px-4 pt-4 pb-2 text-sm font-medium text-foreground">Övergripande</div>
           <div>
             {/* Mobile: header + row label on top, horizontal columns */}
-            <div className="sm:hidden">
+            <div className="hidden">
               <div className="grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
                 {columns.map((a) => (
                   <div key={a.id} className="px-4 py-3 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -132,8 +217,6 @@ export default function ComparePage() {
                     const tone = deltaVariant(delta as any, false);
                     return (
                       <div key={a.id} className="px-4 py-4">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
                             <div className="group">
                               <div className="flex items-center gap-1 leading-none">
                                 <div className="text-3xl font-extrabold inline-flex items-center gap-1">
@@ -155,11 +238,8 @@ export default function ComparePage() {
                                 })()}
                               </div>
                             </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="text-sm">
-                            {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} kr/mån`) : "Nuvarande"}
-                          </HoverCardContent>
-                        </HoverCard>
+
+
                       </div>
                     );
                   })}
@@ -177,8 +257,6 @@ export default function ComparePage() {
                     const tone = deltaVariant(delta as any, false);
                     return (
                       <div key={a.id + "utp"} className="px-4 py-4">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
                             <div className="group">
                               <div className="flex items-center gap-1 leading-none">
                                 <div className="text-2xl font-semibold">{val != null ? val.toLocaleString("sv-SE") : "—"}</div>
@@ -193,11 +271,7 @@ export default function ComparePage() {
                                 })()}
                               </div>
                             </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="text-sm">
-                            {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} kr`) : "Nuvarande"}
-                          </HoverCardContent>
-                        </HoverCard>
+
                       </div>
                     );
                   })}
@@ -240,8 +314,6 @@ export default function ComparePage() {
                     const tone = deltaVariant(delta as any, false);
                     return (
                       <div key={a.id + "ki"} className="px-4 py-4">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
                             <div className="group">
                               <div className="flex items-center gap-1 leading-none">
                                 <div className="text-2xl font-semibold">{val != null ? val.toLocaleString("sv-SE") : "—"}</div>
@@ -268,11 +340,7 @@ export default function ComparePage() {
                                 })()}
                               </div>
                             </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="text-sm">
-                            {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} kr`) : "Nuvarande"}
-                          </HoverCardContent>
-                        </HoverCard>
+
                       </div>
                     );
                   })}
@@ -282,88 +350,67 @@ export default function ComparePage() {
             </div>
 
             {/* Desktop: label column on the left */}
-            <div className="hidden sm:block overflow-x-auto">
+            <div className="block">
               <div className="min-w-[720px]">
 
-                <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
-                  <div className="px-4 py-5 text-sm text-foreground/80"><div>Månadskostnad</div><div className="text-[11px] text-muted-foreground/80 mt-1">kr/mån</div></div>
+                <CompareRow label="Månadskostnad" unit="kr/mån" gridTemplate={gridTemplate} labelClassName="py-5">
                   {columns.map((a) => {
                     const delta = current && a.totalMonthlyCost != null && current.totalMonthlyCost != null ? a.totalMonthlyCost - current.totalMonthlyCost : null;
                     const tone = deltaVariant(delta as any, false);
                     return (
-                      <div key={a.id} className="px-4 py-4">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
-                            <div className="group">
-                              <div className="flex items-center gap-1 leading-none">
-                                <div className="text-3xl font-extrabold inline-flex items-center gap-1">
-                                  {a.totalMonthlyCost != null ? a.totalMonthlyCost.toLocaleString("sv-SE") : "—"}
-                                  {a.maintenanceUnknown ? (
-                                    <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
-                                      <Asterisk className="h-4 w-4 text-muted-foreground" />
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {(() => {
-                                  const val = a.totalMonthlyCost;
-                                  const isBest = val != null && bestMonthlyCost != null && val === bestMonthlyCost;
-                                  if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
-                                  if (a.kind === "current" || !delta || delta === 0) return null;
-                                  const up = delta > 0;
-                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                  return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                                })()}
-                              </div>
-                            </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="text-sm">
-                            {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} kr/mån`) : "Nuvarande"}
-                          </HoverCardContent>
-                        </HoverCard>
+                      <div key={a.id}>
+                        <CompareCell onClick={() => openCell({ acc: a, label: "Månadskostnad", unit: "kr/mån", value: a.totalMonthlyCost ?? undefined, delta })}>
+                          <div className="text-3xl font-extrabold inline-flex items-center gap-1">
+                            {a.totalMonthlyCost != null ? a.totalMonthlyCost.toLocaleString("sv-SE") : "—"}
+                            {a.maintenanceUnknown ? (
+                              <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                <Asterisk className="h-4 w-4 text-muted-foreground" />
+                              </span>
+                            ) : null}
+                          </div>
+                          {(() => {
+                            const val = a.totalMonthlyCost;
+                            const isBest = val != null && bestMonthlyCost != null && val === bestMonthlyCost;
+                            if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
+                            if (a.kind === "current" || !delta || delta === 0) return null;
+                            const up = delta > 0;
+                            const Icon = up ? ArrowUpRight : ArrowDownRight;
+                            return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                          })()}
+                        </CompareCell>
                       </div>
                     );
                   })}
-                </div>
+                </CompareRow>
 
                 {/* Utropspris (desktop) */}
-                <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
-                  <div className="px-4 py-5 text-sm text-foreground/80"><div>Utropspris</div><div className="text-[11px] text-muted-foreground/80 mt-1">kr</div></div>
+                <CompareRow label="Utropspris" unit="kr" gridTemplate={gridTemplate} labelClassName="py-5">
                   {columns.map((a) => {
                     const base = current ? (current.kind === "current" ? current.currentValuation : (current as any).begartPris) : undefined;
                     const val = a.kind === "current" ? a.currentValuation : (a as any).begartPris;
                     const delta = base != null && val != null ? val - base : null;
                     const tone = deltaVariant(delta as any, false);
                     return (
-                      <div key={a.id + "utp-desktop"} className="px-4 py-4">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
-                            <div className="group">
-                              <div className="flex items-center gap-1 leading-none">
-                                <div className="text-3xl font-bold">{val != null ? val.toLocaleString("sv-SE") : "\u2014"}</div>
-                                {(() => {
-                                  const best = bestValue(columns.map((c) => c.kind === "current" ? c.currentValuation : (c as any).begartPris), /* goodWhenHigher= */ false);
-                                  const isBest = val != null && best != null && val === best;
-                                  if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
-                                  if (a.kind === "current" || !delta || delta === 0) return null;
-                                  const up = (delta as number) > 0;
-                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                  return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                                })()}
-                              </div>
-                            </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="text-sm">
-                            {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} kr`) : "Nuvarande"}
-                          </HoverCardContent>
-                        </HoverCard>
+                      <div key={a.id + "utp-desktop"}>
+                        <CompareCell onClick={() => openCell({ acc: a, label: "Utropspris", unit: "kr", value: val ?? undefined, delta })}>
+                          <div className="text-3xl font-bold">{val != null ? val.toLocaleString("sv-SE") : "\u2014"}</div>
+                          {(() => {
+                            const best = bestValue(columns.map((c) => c.kind === "current" ? c.currentValuation : (c as any).begartPris), /* goodWhenHigher= */ false);
+                            const isBest = val != null && best != null && val === best;
+                            if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
+                            if (a.kind === "current" || !delta || delta === 0) return null;
+                            const up = (delta as number) > 0;
+                            const Icon = up ? ArrowUpRight : ArrowDownRight;
+                            return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                          })()}
+                        </CompareCell>
                       </div>
                     );
                   })}
-                </div>
+                </CompareRow>
 
                 {/* Kontantinsats (desktop) */}
-                <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
-                  <div className="px-4 py-5 text-sm text-foreground/80"><div>Kontantinsats <span className="text-muted-foreground/80">(15%)</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">kr</div></div>
+                <CompareRow label="Kontantinsats" unit="kr" gridTemplate={gridTemplate} labelClassName="py-5">
                   {columns.map((a) => {
                     const base = (() => {
                       if (!current) return undefined;
@@ -395,44 +442,35 @@ export default function ComparePage() {
                     const delta = base != null && val != null ? (val - base) : null;
                     const tone = deltaVariant(delta as any, false);
                     return (
-                      <div key={a.id + "ki-desktop"} className="px-4 py-4">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
-                            <div className="group">
-                              <div className="flex items-center gap-1 leading-none">
-                                <div className="text-3xl font-bold">{val != null ? val.toLocaleString("sv-SE") : "\u2014"}</div>
-                                {(() => {
-                                  const best = bestValue(columns.map((c) => {
-                                    if (c.kind === "current") {
-                                      const loans = (((c.metrics as any)?.mortgage?.loans) ?? []) as { principal: number }[];
-                                      const debt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                                      const v = c.currentValuation ?? 0;
-                                      return v > 0 ? v - debt : undefined;
-                                    } else {
-                                      const ki = (c as any).kontantinsats as number | undefined;
-                                      if (ki != null) return ki;
-                                      const bp = (c as any).begartPris as number | undefined;
-                                      return bp != null ? Math.round(bp * 0.15) : undefined;
-                                    }
-                                  }), /* goodWhenHigher= */ false);
-                                  const isBest = val != null && best != null && val === best;
-                                  if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
-                                  if (a.kind === "current" || !delta || delta === 0) return null;
-                                  const up = (delta as number) > 0;
-                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                  return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                                })()}
-                              </div>
-                            </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="text-sm">
-                            {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} kr`) : "Nuvarande"}
-                          </HoverCardContent>
-                        </HoverCard>
+                      <div key={a.id + "ki-desktop"}>
+                        <CompareCell onClick={() => openCell({ acc: a, label: "Kontantinsats", unit: "kr", value: val ?? undefined, delta })}>
+                          <div className="text-3xl font-bold">{val != null ? val.toLocaleString("sv-SE") : "\u2014"}</div>
+                          {(() => {
+                            const best = bestValue(columns.map((c) => {
+                              if (c.kind === "current") {
+                                const loans = (((c.metrics as any)?.mortgage?.loans) ?? []) as { principal: number }[];
+                                const debt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
+                                const v = c.currentValuation ?? 0;
+                                return v > 0 ? v - debt : undefined;
+                              } else {
+                                const ki = (c as any).kontantinsats as number | undefined;
+                                if (ki != null) return ki;
+                                const bp = (c as any).begartPris as number | undefined;
+                                return bp != null ? Math.round(bp * 0.15) : undefined;
+                              }
+                            }), /* goodWhenHigher= */ false);
+                            const isBest = val != null && best != null && val === best;
+                            if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
+                            if (a.kind === "current" || !delta || delta === 0) return null;
+                            const up = (delta as number) > 0;
+                            const Icon = up ? ArrowUpRight : ArrowDownRight;
+                            return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                          })()}
+                        </CompareCell>
                       </div>
                     );
                   })}
-                </div>
+                </CompareRow>
 
               </div>
             </div>
@@ -444,7 +482,7 @@ export default function ComparePage() {
           <div className="px-4 py-3 text-sm font-medium text-foreground border-t border-border">Husdetaljer</div>
           <div>
             {/* Mobile header */}
-            <div className="sm:hidden grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
+            <div className="hidden border-b" style={{ gridTemplateColumns: mobileTemplate }}>
               {columns.map((a) => (
                 <div key={a.id} className="px-4 py-3 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                   {a.title}
@@ -453,7 +491,7 @@ export default function ComparePage() {
             </div>
 
             {/* Desktop header */}
-            <div className="hidden sm:block overflow-x-auto">
+            <div className="block">
               <div className="min-w-[720px]">
 
               </div>
@@ -463,7 +501,7 @@ export default function ComparePage() {
             {[{ key: "boarea", label: "Bostadsyta", unit: "m²", good: true }, { key: "antalRum", label: "Antal rum", unit: "rum", good: true }, { key: "tomtarea", label: "Tomtareal", unit: "m²", good: true }].map((row) => (
               <div key={row.key}>
                 {/* Mobile row */}
-                <div className="sm:hidden">
+                <div className="hidden">
                   <div className="px-4 pt-3 text-xs text-muted-foreground">{row.label} <span className="text-[11px] text-muted-foreground/80">{row.unit}</span></div>
                   <div className="overflow-x-auto">
                     <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
@@ -473,28 +511,25 @@ export default function ComparePage() {
                         const delta = base != null && val != null ? val - base : null;
                         const tone = deltaVariant(delta as any, row.good);
                         return (
-                          <div key={a.id + row.key} className="px-4 py-4">
-                            <HoverCard>
-                              <HoverCardTrigger asChild>
-                                <div className="group">
-                                  <div className="flex items-center gap-1 leading-none">
-                                    <div className="text-3xl font-bold">{val != null ? val : "—"}</div>
-                                    {(() => {
-                                      const best = bestValue(columns.map((c) => (c as any)[row.key] as number | undefined), row.good);
-                                      const isBest = val != null && best != null && val === best;
-                                      if (isBest) return <Award className="h-3.5 w-3.5 text-emerald-600" />;
-                                      if (a.kind === "current" || !delta || delta === 0) return null;
-                                      const up = (delta as number) > 0;
-                                      const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                      return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                                    })()}
-                                  </div>
-                                </div>
-                              </HoverCardTrigger>
-                              <HoverCardContent className="text-sm">
-                                {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n}${row.unit ? " " + row.unit : ""}`) : "Nuvarande"}
-                              </HoverCardContent>
-                            </HoverCard>
+                          <div key={a.id + row.key}>
+                            <button
+                              type="button"
+                              onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta })}
+                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <div className="flex items-center gap-1 leading-none">
+                                <div className="text-3xl font-bold">{val != null ? val : "—"}</div>
+                                {(() => {
+                                  const best = bestValue(columns.map((c) => (c as any)[row.key] as number | undefined), row.good);
+                                  const isBest = val != null && best != null && val === best;
+                                  if (isBest) return <Award className="h-3.5 w-3.5 text-emerald-600" />;
+                                  if (a.kind === "current" || !delta || delta === 0) return null;
+                                  const up = (delta as number) > 0;
+                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                })()}
+                              </div>
+                            </button>
                           </div>
                         );
                       })}
@@ -503,41 +538,31 @@ export default function ComparePage() {
                 </div>
 
                 {/* Desktop row */}
-                <div className="hidden sm:block overflow-x-auto">
-                  <div className="min-w-[720px] grid" style={{ gridTemplateColumns: gridTemplate }}>
-                    <div className="px-4 py-4 text-sm text-foreground/80"><div>{row.label}</div><div className="text-[11px] text-muted-foreground/80 mt-1">{row.unit}</div></div>
+                <div className="block">
+                  <CompareRow label={row.label} unit={row.unit} gridTemplate={gridTemplate}>
                     {columns.map((a) => {
                       const base = (current as any)?.[row.key] as number | undefined;
                       const val = (a as any)[row.key] as number | undefined;
                       const delta = base != null && val != null ? val - base : null;
                       const tone = deltaVariant(delta as any, row.good);
                       return (
-                        <div key={a.id + row.key} className="px-4 py-4">
-                          <HoverCard>
-                            <HoverCardTrigger asChild>
-                              <div className="group">
-                                <div className="flex items-center gap-1 leading-none">
-                                  <div className="text-3xl font-bold">{val != null ? val : "—"}</div>
-                                  {(() => {
-                                    const best = bestValue(columns.map((c) => (c as any)[row.key] as number | undefined), row.good);
-                                    const isBest = val != null && best != null && val === best;
-                                    if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
-                                    if (a.kind === "current" || !delta || delta === 0) return null;
-                                    const up = (delta as number) > 0;
-                                    const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                    return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                                  })()}
-                                </div>
-                              </div>
-                            </HoverCardTrigger>
-                            <HoverCardContent className="text-sm">
-                              {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n}${row.unit ? " " + row.unit : ""}`) : "Nuvarande"}
-                            </HoverCardContent>
-                          </HoverCard>
+                        <div key={a.id + row.key}>
+                          <CompareCell onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta })}>
+                            <div className="text-3xl font-bold">{val != null ? val : "—"}</div>
+                            {(() => {
+                              const best = bestValue(columns.map((c) => (c as any)[row.key] as number | undefined), row.good);
+                              const isBest = val != null && best != null && val === best;
+                              if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
+                              if (a.kind === "current" || !delta || delta === 0) return null;
+                              const up = (delta as number) > 0;
+                              const Icon = up ? ArrowUpRight : ArrowDownRight;
+                              return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                            })()}
+                          </CompareCell>
                         </div>
                       );
                     })}
-                  </div>
+                  </CompareRow>
                 </div>
               </div>
             ))}
@@ -549,7 +574,7 @@ export default function ComparePage() {
           <div className="px-4 py-3 text-sm font-medium text-foreground border-t border-border">Kostnader</div>
           <div>
             {/* Mobile header */}
-            <div className="sm:hidden grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
+            <div className="hidden border-b" style={{ gridTemplateColumns: mobileTemplate }}>
               {columns.map((a) => (
                 <div key={a.id} className="px-4 py-3 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                   {a.title}
@@ -558,7 +583,7 @@ export default function ComparePage() {
             </div>
 
             {/* Desktop header */}
-            <div className="hidden sm:block overflow-x-auto">
+            <div className="block">
               <div className="min-w-[720px]">
 
               </div>
@@ -567,7 +592,7 @@ export default function ComparePage() {
             {[{ key: "hyra", label: "Hyra/avgift", unit: "kr/mån", fmt: (n: number) => `${n.toLocaleString("sv-SE")} kr/mån`, good: false }, { key: "driftkostnader", label: "Driftkostnad", unit: "kr/mån", fmt: (n: number) => `${Math.round(n / 12).toLocaleString("sv-SE")} kr/mån`, good: false }, { key: "amorteringPerManad", label: "Amortering", unit: "kr/mån", fmt: (n: number) => `${n.toLocaleString("sv-SE")} kr/mån`, good: false }, { key: "rantaPerManad", label: "Ränta", unit: "kr/mån", fmt: (n: number) => `${n.toLocaleString("sv-SE")} kr/mån`, good: false }].map((row) => (
               <div key={row.key}>
                 {/* Mobile row */}
-                <div className="sm:hidden">
+                <div className="hidden">
                   <div className="px-4 pt-3 text-xs text-muted-foreground">{row.label} <span className="text-[11px] text-muted-foreground/80">{row.unit}</span></div>
                   <div className="overflow-x-auto">
                     <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
@@ -613,9 +638,12 @@ export default function ComparePage() {
                         const delta = baseAdj != null && val != null ? val - baseAdj : null;
                         const tone = deltaVariant(delta as any, false);
                         return (
-                          <div key={a.id + row.key} className="px-4 py-4">
-                            <HoverCard>
-                              <HoverCardTrigger asChild>
+                          <div key={a.id + row.key}>
+                            <button
+                              type="button"
+                              onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta })}
+                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
                                 <div className="group">
                                   <div className="flex items-center gap-1 leading-none">
                                     <div className="text-2xl font-semibold">{val != null ? val.toLocaleString("sv-SE") : "—"}</div>
@@ -650,11 +678,7 @@ export default function ComparePage() {
                                     })()}
                                   </div>
                                 </div>
-                              </HoverCardTrigger>
-                              <HoverCardContent className="text-sm">
-                                {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} ${row.unit ?? ""}`.trim()) : "Nuvarande"}
-                              </HoverCardContent>
-                            </HoverCard>
+                              </button>
                           </div>
                         );
                       })}
@@ -663,9 +687,8 @@ export default function ComparePage() {
                 </div>
 
                 {/* Desktop row */}
-                <div className="hidden sm:block overflow-x-auto">
-                  <div className="min-w-[720px] grid" style={{ gridTemplateColumns: gridTemplate }}>
-                    <div className="px-4 py-4 text-sm text-foreground/80"><div>{row.label}</div><div className="text-[11px] text-muted-foreground/80 mt-1">{row.unit}</div></div>
+                <div className="block">
+                  <CompareRow label={row.label} unit={row.unit} gridTemplate={gridTemplate}>
                     {columns.map((a) => {
                       const base = (() => {
                         if (!current) return undefined;
@@ -708,52 +731,43 @@ export default function ComparePage() {
                       const delta = baseAdj != null && val != null ? val - baseAdj : null;
                       const tone = deltaVariant(delta as any, false);
                       return (
-                        <div key={a.id + row.key} className="px-4 py-4">
-                          <HoverCard>
-                            <HoverCardTrigger asChild>
-                              <div className="group">
-                                <div className="flex items-center gap-1 leading-none">
-                                  <div className="text-2xl font-semibold">{val != null ? val.toLocaleString("sv-SE") : "—"}</div>
-                                  {(() => {
-                                    const best = bestValue(columns.map((c) => {
-                                      const rawC = (() => {
-                                        if (row.key === "utropspris") return c.kind === "current" ? c.currentValuation : (c as any).begartPris;
-                                        if (row.key === "kontantinsats") {
-                                          if (c.kind === "current") {
-                                            const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                                            const loans = mortgage?.loans ?? [];
-                                            const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                                            const valuation = c.currentValuation ?? 0;
-                                            return valuation > 0 ? valuation - totalDebt : undefined;
-                                          } else {
-                                            const ki = (c as any).kontantinsats as number | undefined;
-                                            if (ki != null) return ki;
-                                            const bp = (c as any).begartPris as number | undefined;
-                                            return bp != null ? Math.round(bp * 0.15) : undefined;
-                                          }
-                                        }
-                                        return (c as any)[row.key] as number | undefined;
-                                      })();
-                                      return rawC != null ? (row.key === "driftkostnader" ? (rawC > 0 ? Math.round(rawC / 12) : undefined) : rawC) : undefined;
-                                    }), /* goodWhenHigher= */ false);
-                                    const isBest = val != null && best != null && val === best;
-                                    if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
-                                    if (a.kind === "current" || !delta || delta === 0) return null;
-                                    const up = (delta as number) > 0;
-                                    const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                    return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                                  })()}
-                                </div>
-                              </div>
-                            </HoverCardTrigger>
-                            <HoverCardContent className="text-sm">
-                              {a.kind !== "current" && delta != null && delta !== 0 ? formatDelta(delta as any, (n) => `${n.toLocaleString("sv-SE")} ${row.unit ?? ""}`.trim()) : "Nuvarande"}
-                            </HoverCardContent>
-                          </HoverCard>
+                        <div key={a.id + row.key}>
+                          <CompareCell onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta })}>
+                            <div className="text-2xl font-semibold">{val != null ? val.toLocaleString("sv-SE") : "—"}</div>
+                            {(() => {
+                              const best = bestValue(columns.map((c) => {
+                                const rawC = (() => {
+                                  if (row.key === "utropspris") return c.kind === "current" ? c.currentValuation : (c as any).begartPris;
+                                  if (row.key === "kontantinsats") {
+                                    if (c.kind === "current") {
+                                      const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
+                                      const loans = mortgage?.loans ?? [];
+                                      const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
+                                      const valuation = c.currentValuation ?? 0;
+                                      return valuation > 0 ? valuation - totalDebt : undefined;
+                                    } else {
+                                      const ki = (c as any).kontantinsats as number | undefined;
+                                      if (ki != null) return ki;
+                                      const bp = (c as any).begartPris as number | undefined;
+                                      return bp != null ? Math.round(bp * 0.15) : undefined;
+                                    }
+                                  }
+                                  return (c as any)[row.key] as number | undefined;
+                                })();
+                                return rawC != null ? (row.key === "driftkostnader" ? (rawC > 0 ? Math.round(rawC / 12) : undefined) : rawC) : undefined;
+                              }), /* goodWhenHigher= */ false);
+                              const isBest = val != null && best != null && val === best;
+                              if (isBest) return <Award className="h-4 w-4 text-emerald-600" />;
+                              if (a.kind === "current" || !delta || delta === 0) return null;
+                              const up = (delta as number) > 0;
+                              const Icon = up ? ArrowUpRight : ArrowDownRight;
+                              return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                            })()}
+                          </CompareCell>
                         </div>
                       );
                     })}
-                  </div>
+                  </CompareRow>
                 </div>
               </div>
             ))}
@@ -765,7 +779,7 @@ export default function ComparePage() {
           <div className="px-4 py-3 text-sm font-medium text-foreground border-t border-border">Pendling</div>
           <div>
             {/* Mobile header */}
-            <div className="sm:hidden grid border-b" style={{ gridTemplateColumns: mobileTemplate }}>
+            <div className="hidden border-b" style={{ gridTemplateColumns: mobileTemplate }}>
               {columns.map((a) => (
                 <div key={a.id} className="px-4 py-3 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                   {a.title}
@@ -774,7 +788,7 @@ export default function ComparePage() {
             </div>
 
             {/* Desktop header */}
-            <div className="hidden sm:block overflow-x-auto">
+            <div className="block">
               <div className="min-w-[720px]">
 
               </div>
@@ -786,7 +800,7 @@ export default function ComparePage() {
               places.map((p) => (
                 <div key={p.id}>
                   {/* Mobile rows: To and From */}
-                  <div className="sm:hidden">
+                  <div className="hidden">
                     {/* To place */}
                     <div className="px-4 pt-3 text-xs text-muted-foreground flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Till {p.label || "Plats"}</span> <span className="text-[11px] text-muted-foreground/80">min</span></div>
                     <div className="px-4 text-[11px] text-muted-foreground/80">Anländ senast {p.arriveBy ?? "—"}</div>
@@ -800,9 +814,7 @@ export default function ComparePage() {
                           const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                           const tone = deltaVariant(d as any, false);
                           return (
-                            <div key={a.id + p.id + "to"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
-                              <HoverCard>
-                                <HoverCardTrigger asChild>
+                            <div key={a.id + p.id + "to"} className="px-4 py-4 cursor-pointer hover:bg-muted/40 rounded-md transition-colors" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
                                   <div className="group">
                                     <div className="flex items-center gap-1 leading-none">
                                       <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
@@ -817,11 +829,7 @@ export default function ComparePage() {
                                       })()}
                                     </div>
                                   </div>
-                                </HoverCardTrigger>
-                                <HoverCardContent className="text-sm">
-                                  {d != null ? formatDelta(d, (n) => `${n} min`) : "Nuvarande"}
-                                </HoverCardContent>
-                              </HoverCard>
+
                             </div>
                           );
                         })}
@@ -841,9 +849,7 @@ export default function ComparePage() {
                           const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                           const tone = deltaVariant(d as any, false);
                           return (
-                            <div key={a.id + p.id + "from"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: p.address ?? p.label, destination: a.address ?? a.title, leaveAt: p.leaveAt, direction: "from" })}>
-                              <HoverCard>
-                                <HoverCardTrigger asChild>
+                            <div key={a.id + p.id + "from"} className="px-4 py-4 cursor-pointer hover:bg-muted/40 rounded-md transition-colors" onClick={() => openTransit({ origin: p.address ?? p.label, destination: a.address ?? a.title, leaveAt: p.leaveAt, direction: "from" })}>
                                   <div className="group">
                                     <div className="flex items-center gap-1 leading-none">
                                       <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
@@ -858,11 +864,7 @@ export default function ComparePage() {
                                       })()}
                                     </div>
                                   </div>
-                                </HoverCardTrigger>
-                                <HoverCardContent className="text-sm">
-                                  {d != null ? formatDelta(d, (n) => `${n} min`) : "Nuvarande"}
-                                </HoverCardContent>
-                              </HoverCard>
+
                             </div>
                           );
                         })}
@@ -871,9 +873,9 @@ export default function ComparePage() {
                   </div>
 
                   {/* Desktop rows: To and From */}
-                  <div className="hidden sm:block overflow-x-auto">
+                  <div className="block">
                     {/* To place */}
-                    <div className="min-w-[720px] grid" style={{ gridTemplateColumns: gridTemplate }}>
+                    <div className="min-w-[720px] grid hover:bg-muted/20 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
                       <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Till {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Anländ senast {p.arriveBy ?? "—"}</div></div>
                       {columns.map((a) => {
                         const accTimes = commuteForTwo(a.id);
@@ -883,9 +885,7 @@ export default function ComparePage() {
                         const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                         const tone = deltaVariant(d as any, false);
                         return (
-                          <div key={a.id + p.id + "to-desktop"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
-                            <HoverCard>
-                              <HoverCardTrigger asChild>
+                          <div key={a.id + p.id + "to-desktop"} className="px-4 py-4 cursor-pointer hover:bg-muted/40 rounded-md transition-colors" onClick={() => openTransit({ origin: a.address ?? a.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
                                 <div className="group">
                                   <div className="flex items-center gap-1 leading-none">
                                     <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
@@ -900,18 +900,14 @@ export default function ComparePage() {
                                     })()}
                                   </div>
                                 </div>
-                              </HoverCardTrigger>
-                              <HoverCardContent className="text-sm">
-                                {d != null ? formatDelta(d, (n) => `${n} min`) : "Nuvarande"}
-                              </HoverCardContent>
-                            </HoverCard>
+
                           </div>
                         );
                       })}
                     </div>
 
                     {/* From place */}
-                    <div className="min-w-[720px] grid" style={{ gridTemplateColumns: gridTemplate }}>
+                    <div className="min-w-[720px] grid hover:bg-muted/20 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
                       <div className="px-4 py-4 text-sm text-foreground/80"><div className="flex items-center gap-2"><Clock className="h-3.5 w-3.5" /><span>Från {p.label || "Plats"}</span></div><div className="text-[11px] text-muted-foreground/80 mt-1">min • Lämna vid {p.leaveAt ?? "—"}</div></div>
                       {columns.map((a) => {
                         const accTimes = commuteForTwo(a.id);
@@ -921,9 +917,7 @@ export default function ComparePage() {
                         const d = a.kind !== "current" && cMin != null && aMin != null ? (aMin - cMin) : null;
                         const tone = deltaVariant(d as any, false);
                         return (
-                          <div key={a.id + p.id + "from-desktop"} className="px-4 py-4 cursor-pointer" onClick={() => openTransit({ origin: p.address ?? p.label, destination: a.address ?? a.title, leaveAt: p.leaveAt, direction: "from" })}>
-                            <HoverCard>
-                              <HoverCardTrigger asChild>
+                          <div key={a.id + p.id + "from-desktop"} className="px-4 py-4 cursor-pointer hover:bg-muted/40 rounded-md transition-colors" onClick={() => openTransit({ origin: p.address ?? p.label, destination: a.address ?? a.title, leaveAt: p.leaveAt, direction: "from" })}>
                                 <div className="group">
                                   <div className="flex items-center gap-1 leading-none">
                                     <div className="text-3xl font-bold">{aMin != null ? aMin : "—"}</div>
@@ -938,22 +932,25 @@ export default function ComparePage() {
                                     })()}
                                   </div>
                                 </div>
-                              </HoverCardTrigger>
-                              <HoverCardContent className="text-sm">
-                                {d != null ? formatDelta(d, (n) => `${n} min`) : "Nuvarande"}
-                              </HoverCardContent>
-                            </HoverCard>
+
                           </div>
                         );
                       })}
                     </div>
                   </div>
+
+
+
                 </div>
               ))
             )}
           </div>
         </section>
+          </div>
+        </div>
+
       </div>
+      <CellDetailDrawer open={cellOpen} onOpenChange={setCellOpen} ctx={cellCtx} />
         <TransitDrawer open={transitOpen} onOpenChange={setTransitOpen} context={transitCtx} />
     </div>
   );
