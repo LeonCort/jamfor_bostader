@@ -94,6 +94,25 @@ function savePlacesToStorage(list: ImportantPlace[]) {
   }
 }
 
+const FINANCE_STORAGE_KEY = "reskollen.finance.v1";
+export type FinanceSettings = {
+  downPaymentRate: number; // e.g., 0.15
+  interestRateAnnual: number; // e.g., 0.03
+  incomeMonthlyPerson1?: number;
+  incomeMonthlyPerson2?: number;
+};
+function loadFinanceFromStorage(): FinanceSettings | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(FINANCE_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as FinanceSettings;
+  } catch { return null; }
+}
+function saveFinanceToStorage(f: FinanceSettings) {
+  try { localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(f)); } catch { /* ignore */ }
+}
+
 // Deterministic pseudo-random for mock commute generation
 function hashString(s: string): number {
   let h = 2166136261 >>> 0;
@@ -216,7 +235,7 @@ function ensureMockCompleteness(a: Accommodation): Accommodation {
   return next;
 }
 
-function computeDerived(a: Accommodation): Accommodation {
+function computeDerived(a: Accommodation, finance: FinanceSettings): Accommodation {
   const maintenanceUnknown = a.driftkostnader == null || a.driftkostnader === 0; // treat 0 as missing
   const annualMaintenance = maintenanceUnknown ? 0 : (a.driftkostnader!);
   const maintenancePerMonth = Math.round(annualMaintenance / 12);
@@ -229,10 +248,21 @@ function computeDerived(a: Accommodation): Accommodation {
 
   if (a.kind !== "current" && a.begartPris && a.begartPris > 0) {
     // Candidate purchase scenario (estimated)
-    kontantinsats = Math.round(a.begartPris * FINANCE_DEFAULTS.downPaymentRate);
+    const downRate = Math.max(0, Math.min(1, finance.downPaymentRate ?? FINANCE_DEFAULTS.downPaymentRate));
+    kontantinsats = Math.round(a.begartPris * downRate);
     lan = Math.max(0, a.begartPris - kontantinsats);
-    amorteringPerManad = Math.round((lan * FINANCE_DEFAULTS.amortizationRateAnnual) / 12);
-    rantaPerManad = Math.round((lan * FINANCE_DEFAULTS.interestRateAnnual) / 12);
+    // LTV-based amortization tiers
+    const ltv = lan > 0 ? lan / a.begartPris : 0;
+    let amortRateAnnual = ltv > 0.7 ? 0.02 : ltv > 0.5 ? 0.01 : 0;
+    // DTI-based surcharge: +1% if debt-to-income > 4.5x (Skuldkvotstillägg)
+    const monthlyIncomeTotal = (finance.incomeMonthlyPerson1 ?? 0) + (finance.incomeMonthlyPerson2 ?? 0);
+    const annualIncomeTotal = monthlyIncomeTotal > 0 ? monthlyIncomeTotal * 12 : 0;
+    if (annualIncomeTotal > 0) {
+      const dti = lan > 0 ? lan / annualIncomeTotal : 0;
+      if (dti > 4.5) amortRateAnnual += 0.01;
+    }
+    amorteringPerManad = Math.round((lan * amortRateAnnual) / 12);
+    rantaPerManad = Math.round((lan * (finance.interestRateAnnual ?? FINANCE_DEFAULTS.interestRateAnnual)) / 12);
   } else if (a.kind === "current") {
     // Current home with optional mortgage details
     const mortgage = (a.metrics as any)?.mortgage as
@@ -253,7 +283,13 @@ function computeDerived(a: Accommodation): Accommodation {
       if (ltv > 0.7) amortRateAnnual = 0.02;
       else if (ltv > 0.5) amortRateAnnual = 0.01;
       else amortRateAnnual = 0;
-      // Note: additional 1% for high debt-to-income not applied (no income data yet)
+      // DTI-based surcharge: +1% if debt-to-income > 4.5x (Skuldkvotstillägg)
+      const monthlyIncomeTotal = (finance.incomeMonthlyPerson1 ?? 0) + (finance.incomeMonthlyPerson2 ?? 0);
+      const annualIncomeTotal = monthlyIncomeTotal > 0 ? monthlyIncomeTotal * 12 : 0;
+      if (annualIncomeTotal > 0) {
+        const dti = totalDebt / annualIncomeTotal;
+        if (dti > 4.5) amortRateAnnual += 0.01;
+      }
     }
     const monthlyAmort = Math.round((totalDebt * amortRateAnnual) / 12);
 
@@ -299,18 +335,32 @@ export type CurrentHomeInput = {
 export function useAccommodations() {
   const [accommodations, setAccommodations] = useState<Accommodation[] | null>(null);
   const [places, setPlaces] = useState<ImportantPlace[] | null>(null);
+  const [finance, setFinance] = useState<FinanceSettings>({
+    downPaymentRate: FINANCE_DEFAULTS.downPaymentRate,
+    interestRateAnnual: FINANCE_DEFAULTS.interestRateAnnual,
+  });
+
 
   // Load once on mount; seed if empty
   useEffect(() => {
+    // Load finance settings first
+    const loadedFinance = loadFinanceFromStorage();
+    const f: FinanceSettings = loadedFinance ?? {
+      downPaymentRate: FINANCE_DEFAULTS.downPaymentRate,
+      interestRateAnnual: FINANCE_DEFAULTS.interestRateAnnual,
+      incomeMonthlyPerson1: undefined,
+      incomeMonthlyPerson2: undefined,
+    };
+    setFinance(f);
+
     const loaded = loadFromStorage();
     if (loaded && loaded.length > 0) {
-      const processed = loaded.map(ensureMockCompleteness).map(computeDerived);
-
+      const processed = loaded.map(ensureMockCompleteness).map((a) => computeDerived(a, f));
       setAccommodations(processed);
       saveToStorage(processed);
     } else {
       const seeded = seedMockData();
-      const processed = seeded.map(ensureMockCompleteness).map(computeDerived);
+      const processed = seeded.map(ensureMockCompleteness).map((a) => computeDerived(a, f));
       setAccommodations(processed);
       saveToStorage(processed);
     }
@@ -366,7 +416,7 @@ export function useAccommodations() {
     function commit(updater: (prev: Accommodation[]) => Accommodation[]) {
       setAccommodations((prev) => {
         const base = prev ?? [];
-        const next = updater(base).map(ensureMockCompleteness).map(computeDerived);
+        const next = updater(base).map(ensureMockCompleteness).map((a) => computeDerived(a, finance));
         saveToStorage(next);
         return next;
       });
@@ -559,10 +609,25 @@ export function useAccommodations() {
       return item;
     }
 
-    return { add, addMock, addFromParsed, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces };
+    function updateFinanceSettings(patch: Partial<FinanceSettings>) {
+      setFinance((prev) => {
+        const next = { ...prev, ...patch } as FinanceSettings;
+        saveFinanceToStorage(next);
+        // Recompute all accommodations with new finance settings
+        setAccommodations((prevAcc) => {
+          const base = prevAcc ?? [];
+          const recalculated = base.map(ensureMockCompleteness).map((a) => computeDerived(a, next));
+          saveToStorage(recalculated);
+          return recalculated;
+        });
+        return next;
+      });
+    }
+
+    return { add, addMock, addFromParsed, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces, updateFinanceSettings };
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;
-  return { accommodations: accommodations ?? [], current, places: places ?? [], commuteFor, commuteForTwo, ...api } as const;
+  return { accommodations: accommodations ?? [], current, places: places ?? [], finance, commuteFor, commuteForTwo, ...api } as const;
 }
 

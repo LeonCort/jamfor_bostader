@@ -18,7 +18,7 @@ function parseSwedishNumber(input?: string | null): number | undefined {
 }
 
 export default function SettingsPage() {
-  const { current, places, upsertCurrentFromUser, replacePlaces } = useAccommodations();
+  const { current, places, finance, upsertCurrentFromUser, replacePlaces, updateFinanceSettings } = useAccommodations();
 
   // Current home form state
   const [loanRows, setLoanRows] = useState<Array<{ principal: string; rate: string }>>([{ principal: "", rate: "" }]);
@@ -54,7 +54,7 @@ export default function SettingsPage() {
     { value: "ShoppingCart", label: "Butik" },
   ] as const;
 
-  const [active, setActive] = useState<'current' | 'places'>('current');
+  const [active, setActive] = useState<'current' | 'places' | 'finance'>('current');
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 sm:px-6 py-6">
@@ -82,6 +82,16 @@ export default function SettingsPage() {
             >
               Viktiga platser
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active === 'finance'}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active === 'finance' ? 'bg-muted text-foreground' : 'hover:bg-muted/60 text-muted-foreground'}`}
+              onClick={() => setActive('finance')}
+            >
+              Ekonomi
+            </button>
+
           </nav>
         </aside>
 
@@ -192,7 +202,7 @@ export default function SettingsPage() {
                 </div>
               </form>
             </section>
-          ) : (
+          ) : active === 'places' ? (
             <section className="rounded-2xl border border-border/60 bg-card/80 p-4 sm:p-6">
               <h2 className="text-base font-semibold">Ställ in viktiga platser</h2>
               <p className="text-sm text-muted-foreground">Lägg till destinationer som du bryr dig om. Dessa kan användas för framtida pendling.</p>
@@ -266,6 +276,50 @@ export default function SettingsPage() {
                   </Button>
                 </div>
               </div>
+            </section>
+          ) : (
+            <section className="rounded-2xl border border-border/60 bg-card/80 p-4 sm:p-6">
+              <h2 className="text-base font-semibold">Ekonomi</h2>
+              <p className="text-sm text-muted-foreground">Standardvärden för beräkningar. Dessa används för kandidatobjekt när annonsen saknar uppgifter.</p>
+
+              <form
+                className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget as HTMLFormElement);
+                  const num = (v: FormDataEntryValue | null) => parseSwedishNumber((v as string) ?? undefined);
+                  const downPct = num(fd.get('downPaymentRate'));
+                  const ratePct = num(fd.get('interestRateAnnual'));
+                  const income1 = num(fd.get('income1'));
+                  const income2 = num(fd.get('income2'));
+                  updateFinanceSettings({
+                    downPaymentRate: Number.isFinite(downPct) ? (downPct as number) / 100 : finance.downPaymentRate,
+                    interestRateAnnual: Number.isFinite(ratePct) ? (ratePct as number) / 100 : finance.interestRateAnnual,
+                    incomeMonthlyPerson1: Number.isFinite(income1) ? (income1 as number) : undefined,
+                    incomeMonthlyPerson2: Number.isFinite(income2) ? (income2 as number) : undefined,
+                  });
+                }}
+              >
+                <div className="space-y-1">
+                  <Label htmlFor="downPaymentRate">Kontantinsats (% av pris)</Label>
+                  <PercentInput name="downPaymentRate" id="downPaymentRate" defaultValue={((finance?.downPaymentRate ?? 0.15) * 100).toString()} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="interestRateAnnual">Ränta (% per år)</Label>
+                  <PercentInput name="interestRateAnnual" id="interestRateAnnual" defaultValue={((finance?.interestRateAnnual ?? 0.03) * 100).toString()} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="income1">Inkomst person 1 / mån (SEK)</Label>
+                  <CurrencyInput name="income1" id="income1" defaultValue={finance?.incomeMonthlyPerson1 ?? ''} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="income2">Inkomst person 2 / mån (SEK)</Label>
+                  <CurrencyInput name="income2" id="income2" defaultValue={finance?.incomeMonthlyPerson2 ?? ''} />
+                </div>
+                <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
+                  <Button type="submit">Spara</Button>
+                </div>
+              </form>
             </section>
           )}
         </div>
