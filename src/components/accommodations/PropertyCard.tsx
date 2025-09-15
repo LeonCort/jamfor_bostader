@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as Icons from "lucide-react";
-import { MapPin, Home, Ruler, CircleDollarSign, ArrowRight, ArrowLeft, Calendar, Pencil, Trash2, PiggyBank } from "lucide-react";
+import { MapPin, Ruler, CircleDollarSign, ArrowRight, ArrowLeft, Calendar, Pencil, Trash2, PiggyBank, X, Bed, Leaf } from "lucide-react";
 import type { Accommodation } from "@/lib/accommodations";
 import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
@@ -13,9 +13,40 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
 import TotalCostDrawer from "@/components/accommodations/TotalCostDrawer";
 
+export type CardFieldKey =
+  | "price"
+  | "totalMonthlyCost"
+  | "downPayment"
+  | "constructionYear"
+  | "rooms"
+  | "livingArea"
+  | "monthlyFee"
+  | "operatingMonthly"
+  | "kontantinsats"
+  | "lan"
+  | "amortering"
+  | "ranta"
+  | "energyClass";
+
+function formatMinutes(n?: number) {
+  if (n == null) return "—";
+  const h = Math.floor(n / 60);
+  const m = Math.round(n % 60);
+  if (h > 0) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+
+export type CardConfig = {
+  showAll?: boolean;
+  order: CardFieldKey[];
+  enabled: Partial<Record<CardFieldKey, boolean>>;
+};
+
 export type PropertyCardProps = {
   item: Accommodation;
   className?: string;
+  config?: CardConfig;
 };
 
 function formatSek(n?: number) {
@@ -28,7 +59,7 @@ function LucideIcon({ name, className }: { name?: string; className?: string }) 
   return <Cmp className={className} />;
 }
 
-export default function PropertyCard({ item, className }: PropertyCardProps) {
+export default function PropertyCard({ item, className, config }: PropertyCardProps) {
   const pricePerSqm = React.useMemo(() => {
     if (!item.begartPris || !item.boarea || item.boarea === 0) return undefined;
     return Math.round(item.begartPris / item.boarea);
@@ -44,7 +75,7 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
   }, [item.postort, item.kommun, item.address]);
 
   // viktiga platser and commute times (to/from)
-  const { places, commuteForTwo, remove, update } = useAccommodations();
+  const { places, commuteForTwo, commuteFor, remove, update } = useAccommodations();
 
   // Down payment (15% of price) or current = market value - loan
   const downPayment = React.useMemo(() => {
@@ -74,6 +105,34 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
 
   const [costOpen, setCostOpen] = React.useState(false);
 
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [detailsTab, setDetailsTab] = React.useState<'basic' | 'cost' | 'travel'>('basic');
+
+  const maintenancePerMonth = item.driftkostnader != null ? Math.round(item.driftkostnader / 12) : undefined;
+
+  const defaultOrder: CardFieldKey[] = ['price','totalMonthlyCost','downPayment','constructionYear','rooms','energyClass','livingArea','monthlyFee'];
+  const allKeys: CardFieldKey[] = [...defaultOrder, 'operatingMonthly','kontantinsats','lan','amortering','ranta'];
+  const order = config?.order ?? defaultOrder;
+  const enabled = config?.enabled ?? {};
+  const primaryKeys = order.filter((k) => enabled[k] !== false);
+  const keys: CardFieldKey[] = (config?.showAll ? [...primaryKeys, ...allKeys.filter((k) => !primaryKeys.includes(k))] : primaryKeys) as CardFieldKey[];
+
+  const specs: Record<CardFieldKey, { label: string; icon: any; value: string; clickable?: boolean; onClick?: () => void }> = {
+    price: { label: 'Pris', icon: CircleDollarSign, value: formatSek(listingPrice) },
+    totalMonthlyCost: { label: 'Totalkostnad', icon: CircleDollarSign, value: item.totalMonthlyCost != null ? `${item.totalMonthlyCost.toLocaleString('sv-SE')} kr/mån` : '—', clickable: true, onClick: () => setCostOpen(true) },
+    downPayment: { label: 'Inköpspris (15%)', icon: PiggyBank, value: downPayment != null ? `${downPayment.toLocaleString('sv-SE')} kr` : '—' },
+    constructionYear: { label: 'Byggår', icon: Calendar, value: item.constructionYear != null ? String(item.constructionYear) : '—' },
+    rooms: { label: 'Rum', icon: Bed, value: item.antalRum != null ? String(item.antalRum) : '—' },
+    energyClass: { label: 'Energiklass', icon: Leaf, value: String(((item as any)?.metrics?.meta as any)?.energyClass ?? '—') },
+    livingArea: { label: 'Storlek', icon: Ruler, value: item.boarea != null ? `${item.boarea} m²` : '—' },
+    monthlyFee: { label: 'Avgift', icon: CircleDollarSign, value: item.hyra != null ? `${item.hyra.toLocaleString('sv-SE')} kr/mån` : '—' },
+    operatingMonthly: { label: 'Drift / mån', icon: CircleDollarSign, value: maintenancePerMonth != null ? `${maintenancePerMonth.toLocaleString('sv-SE')} kr/mån` : '—' },
+    kontantinsats: { label: 'Kontantinsats', icon: PiggyBank, value: formatSek(item.kontantinsats) },
+    lan: { label: 'Lån', icon: CircleDollarSign, value: formatSek(item.lan) },
+    amortering: { label: 'Amortering / mån', icon: CircleDollarSign, value: formatSek(item.amorteringPerManad) },
+    ranta: { label: 'Ränta / mån', icon: CircleDollarSign, value: formatSek(item.rantaPerManad) },
+  };
+
   return (
     <div className={cn("bg-card rounded-2xl border border-border overflow-hidden shadow-sm", className)}>
       <div className="lg:flex">
@@ -85,6 +144,27 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
             alt={item.title}
             className="w-full h-full object-cover"
           />
+
+          {/* Top-left chips over image */}
+          <div className="absolute top-3 left-3 flex flex-wrap gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-background/95 backdrop-blur-sm px-2 py-1 text-xs border">
+              <Bed className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{item.antalRum != null ? item.antalRum : '—'}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-background/95 backdrop-blur-sm px-2 py-1 text-xs border">
+              <Leaf className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{String(((item as any)?.metrics?.meta as any)?.energyClass ?? '—')}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-background/95 backdrop-blur-sm px-2 py-1 text-xs border">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{item.constructionYear ?? '—'}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-background/95 backdrop-blur-sm px-2 py-1 text-xs border">
+              <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{item.boarea != null ? `${item.boarea} m²` : '—'}</span>
+            </div>
+          </div>
+
           {pricePerSqm != null && (
             <div className="absolute bottom-3 left-3 bg-background/95 backdrop-blur-sm rounded-md px-2 py-1 text-xs font-semibold border">
               {pricePerSqm.toLocaleString("sv-SE")} kr/m²
@@ -107,6 +187,8 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
                 )}
               </div>
               <div className="shrink-0 flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setDetailsOpen(true)}>Visa detaljer</Button>
+
                 {(() => {
                   const src = (item.metrics as any)?.sourceUrls ?? {};
                   const hemnet: string | undefined = src?.hemnet ?? undefined;
@@ -137,61 +219,29 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
               </div>
             </div>
 
-            {/* Price/Total chips row */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-muted/40 p-3">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <CircleDollarSign className="size-4" />
-                  <span className="text-xs font-medium">Pris</span>
-                </div>
-                <div className="text-lg font-semibold">{formatSek(listingPrice)}</div>
-              </div>
-              <button type="button" onClick={() => setCostOpen(true)} className="text-left rounded-xl bg-muted/40 p-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer transition-transform transform-gpu hover:-translate-y-[1px] hover:shadow-sm">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <CircleDollarSign className="size-4" />
-                  <span className="text-xs font-medium">Totalkostnad</span>
-                </div>
-                <div className="text-lg font-semibold">{item.totalMonthlyCost != null ? `${item.totalMonthlyCost.toLocaleString("sv-SE")} kr/mån` : "—"}</div>
-              </button>
-              <div className="rounded-xl bg-muted/40 p-3">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <PiggyBank className="size-4" />
-                  <span className="text-xs font-medium">Inköpspris (15%)</span>
-                </div>
-                <div className="text-lg font-semibold">{downPayment != null ? `${downPayment.toLocaleString("sv-SE")} kr` : "—"}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats chips */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-xl bg-muted/40 p-3">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <Calendar className="size-4" />
-                <span className="text-xs font-medium">Byggår</span>
-              </div>
-              <div className="text-lg font-semibold">{item.constructionYear ?? "—"}</div>
-            </div>
-            <div className="rounded-xl bg-muted/40 p-3">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <Home className="size-4" />
-                <span className="text-xs font-medium">Rum</span>
-              </div>
-              <div className="text-lg font-semibold">{item.antalRum ?? "—"}</div>
-            </div>
-            <div className="rounded-xl bg-muted/40 p-3">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <Ruler className="size-4" />
-                <span className="text-xs font-medium">Storlek</span>
-              </div>
-              <div className="text-lg font-semibold">{item.boarea != null ? `${item.boarea} m²` : "—"}</div>
-            </div>
-            <div className="rounded-xl bg-muted/40 p-3">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <CircleDollarSign className="size-4" />
-                <span className="text-xs font-medium">Avgift</span>
-              </div>
-              <div className="text-lg font-semibold">{item.hyra != null ? `${item.hyra.toLocaleString("sv-SE")} kr/mån` : "—"}</div>
+            {/* Anpassningsbara chips */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {keys.map((k) => {
+                const s = specs[k];
+                if (!s) return null;
+                const Icon = s.icon;
+                const inner = (
+                  <>
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <Icon className="size-4" />
+                      <span className="text-xs font-medium">{s.label}</span>
+                    </div>
+                    <div className="text-lg font-semibold">{s.value}</div>
+                  </>
+                );
+                return s.clickable ? (
+                  <button key={k} type="button" onClick={s.onClick} className="text-left rounded-xl bg-muted/40 p-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring transition">
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={k} className="rounded-xl bg-muted/40 p-3">{inner}</div>
+                );
+              })}
             </div>
           </div>
 
@@ -278,6 +328,136 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
           <TransitDrawer open={transitOpen} onOpenChange={setTransitOpen} context={transitCtx} />
 
           <TotalCostDrawer open={costOpen} onOpenChange={setCostOpen} item={item} />
+
+          {/* Visa detaljer drawer */}
+          <Drawer.Root open={detailsOpen} onOpenChange={setDetailsOpen}>
+            <Drawer.Portal>
+              <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
+              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[70vh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+                <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold leading-tight">{item.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{item.address}</div>
+                    </div>
+                    <Button variant="ghost" size="icon" aria-label="Stäng" onClick={() => setDetailsOpen(false)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="mt-4 flex items-center gap-2 border-b border-border/60">
+                    {([
+                      { key: 'basic', label: 'Grundinfo' },
+                      { key: 'cost', label: 'Kostnader' },
+                      { key: 'travel', label: 'Restid' },
+                    ] as const).map((t) => (
+                      <button
+                        key={t.key}
+                        className={cn('-mb-px select-none rounded-t px-3 py-2 text-xs font-medium transition', detailsTab === t.key ? 'border-b-2 border-primary text-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        onClick={() => setDetailsTab(t.key)}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grow overflow-y-auto">
+                    {detailsTab === 'basic' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Adress</div>
+                          <div>{item.address ?? '—'}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Antal rum</div>
+                          <div>{item.antalRum ?? '—'}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Boarea</div>
+                          <div>{item.boarea ?? '—'} m²</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Biarea</div>
+                          <div>{item.biarea ?? '—'} m²</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Tomtarea</div>
+                          <div>{item.tomtarea ?? '—'} m²</div>
+                        </div>
+                        {item.kind !== 'current' && (
+                          <div className="rounded-md border p-3">
+                            <div className="text-xs text-muted-foreground">Begärt pris</div>
+                            <div>{formatSek(item.begartPris)}</div>
+                          </div>
+                        )}
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Byggår</div>
+                          <div>{item.constructionYear ?? '—'}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {detailsTab === 'cost' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Totalt / mån</div>
+                          <div className="font-medium">{formatSek(item.totalMonthlyCost)}</div>
+                        </div>
+                        {item.kind !== 'current' && (
+                          <>
+                            <div className="rounded-md border p-3">
+                              <div className="text-xs text-muted-foreground">Kontantinsats</div>
+                              <div>{formatSek(item.kontantinsats)}</div>
+                            </div>
+                            <div className="rounded-md border p-3">
+                              <div className="text-xs text-muted-foreground">Lån</div>
+                              <div>{formatSek(item.lan)}</div>
+                            </div>
+                          </>
+                        )}
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Amortering / mån</div>
+                          <div>{formatSek(item.amorteringPerManad)}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Ränta / mån</div>
+                          <div>{formatSek(item.rantaPerManad)}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Hyra / mån</div>
+                          <div>{formatSek(item.hyra)}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Drift / mån</div>
+                          <div>{maintenancePerMonth != null ? `${maintenancePerMonth.toLocaleString('sv-SE')} kr/mån` : '—'}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {detailsTab === 'travel' && (
+                      <div className="space-y-3 text-sm">
+                        {listedPlaces.map((p) => {
+                          const times1 = commuteFor(item.id);
+                          const min = times1[p.id];
+                          return (
+                            <div key={p.id} className="rounded-md border p-3 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <LucideIcon name={p.icon} className="h-4 w-4" />
+                                <div className="text-xs text-muted-foreground">{p.label || 'Plats'}</div>
+                              </div>
+                              <div>{formatMinutes(min)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Drawer.Content>
+            </Drawer.Portal>
+          </Drawer.Root>
+
 
 
         </div>
