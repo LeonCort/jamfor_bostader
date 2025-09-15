@@ -11,21 +11,12 @@ import CompareRow from "@/components/compare/CompareRow";
 import CompareCell from "@/components/compare/CompareCell";
 import TransitPanel from "@/components/compare/TransitPanel";
 
+import { bestValue, deltaVariant, metrics, type MetricKey } from "@/lib/compareMetrics";
+
 
 function formatSek(n?: number) {
   if (n == null) return "—";
   return n.toLocaleString("sv-SE", { maximumFractionDigits: 0 }) + " kr";
-}
-function deltaVariant(delta: number | null | undefined, goodWhenHigher: boolean): "good" | "bad" | "neutral" {
-  if (delta == null || delta === 0) return "neutral";
-  const favorable = goodWhenHigher ? delta > 0 : delta < 0;
-  return favorable ? "good" : "bad";
-}
-
-function bestValue(values: Array<number | undefined>, goodWhenHigher: boolean): number | undefined {
-  const nums = values.filter((v): v is number => v != null);
-  if (nums.length === 0) return undefined;
-  return goodWhenHigher ? Math.max(...nums) : Math.min(...nums);
 }
 
 export default function ComparePage() {
@@ -46,7 +37,6 @@ export default function ComparePage() {
 
   const isSm = useMediaQuery("(min-width: 640px)");
 
-  const bestMonthlyCost = useMemo(() => bestValue(columns.map(c => c.totalMonthlyCost), /* goodWhenHigher= */ false), [columns]);
   const [transitOpen, setTransitOpen] = useState(false);
   const [transitCtx, setTransitCtx] = useState<TransitDrawerContext | null>(null);
   function openTransit(ctx: TransitDrawerContext) { setTransitCtx(ctx); setTransitOpen(true); }
@@ -171,98 +161,71 @@ export default function ComparePage() {
             {/* Mobile rendering (no per-row scrollers); labels above values */}
             {!isSm && (
               <div>
-                {/* Månadskostnad (mobile) */}
-                <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
-                  {columns.map((a) => {
-                    const delta = current && a.totalMonthlyCost != null && current.totalMonthlyCost != null ? a.totalMonthlyCost - current.totalMonthlyCost : null;
-                    const tone = deltaVariant(delta as any, false);
-                    return (
-                      <div key={a.id} className="px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => openCell({
-                            acc: a,
-                            label: "Månadskostnad",
-                            unit: "kr",
-                            value: a.totalMonthlyCost ?? undefined,
-                            delta,
-                            metricKey: "totalMonthlyCost",
-                            breakdown: [
-                              { label: "Avgift / hyra", value: Math.round(a.hyra ?? 0) },
-                              { label: "Drift (per månad)", value: a.driftkostnader ? Math.round(a.driftkostnader / 12) : 0, note: a.maintenanceUnknown ? "uppskattad 0 kr (okänt)" : undefined },
-                              { label: "Ränta", value: Math.round(a.rantaPerManad ?? 0) },
-                              { label: "Amortering", value: Math.round(a.amorteringPerManad ?? 0), note: (() => { const mi = (finance?.incomeMonthlyPerson1 ?? 0) + (finance?.incomeMonthlyPerson2 ?? 0); const ai = mi * 12; const lan = (a as any).lan as number | undefined; return lan != null && ai > 0 && (lan/ai) > 4.5 ? "+1% skuldkvotstillägg" : undefined; })() },
-                            ],
-                            valuesAcross: columns.map(c => ({ id: c.id, title: c.title, value: c.totalMonthlyCost ?? undefined })),
-                          })}
-                          className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <MobileLabel label="Månadskostnad" unit="kr/mån" />
-                          <div className="flex items-center gap-1 leading-none">
-                            <div className="text-xl font-bold inline-flex items-center gap-1">
-                              {a.totalMonthlyCost != null ? `${a.totalMonthlyCost.toLocaleString("sv-SE")} kr` : "—"}
-                              {a.maintenanceUnknown ? (
-                                <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
-                                  <Asterisk className="h-3 w-3 text-muted-foreground" />
-                                </span>
-                              ) : null}
-                            </div>
-                            {(() => {
-                              const val = a.totalMonthlyCost;
-                              const isBest = val != null && bestMonthlyCost != null && val === bestMonthlyCost;
-                              if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
-                              if (a.kind === "current" || !delta || delta === 0) return null;
-                              const up = delta > 0;
-                              const Icon = up ? ArrowUpRight : ArrowDownRight;
-                              return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                            })()}
-                          </div>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                {/* Rows (registry-driven) */}
+                {(["totalMonthlyCost", "utropspris", "prisPerKvm", "kontantinsats", "dagarPaHemnet"] as MetricKey[]).map((key: MetricKey) => {
+                  const M = metrics[key];
+                  const unitForCell = M.unit?.startsWith("kr") ? "kr" : M.unit;
+                  return (
+                    <div key={key} className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
+                      {columns.map((a) => {
+                        const base = current ? M.valueOf(current, { current, finance }) : undefined;
+                        const val = M.valueOf(a, { current, finance });
+                        const delta = a.kind !== "current" && base != null && val != null ? val - base : null;
+                        const tone = deltaVariant(delta as any, M.goodWhenHigher);
+                        const best = bestValue(columns.map((c) => M.valueOf(c, { current, finance })), M.goodWhenHigher);
+                        const valuesAcross = metrics[key].valuesAcross
+                          ? metrics[key].valuesAcross!(columns, { current, finance })
+                          : columns.map((c) => ({ id: c.id, title: c.title, value: metrics[key].valueOf(c, { current, finance }) }));
+                        const valueText = val != null
+                          ? (M.unit?.startsWith("kr") ? `${val.toLocaleString("sv-SE")} kr` : `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}`)
+                          : "—";
+                        return (
+                          <div key={a.id + key} className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => openCell({
+                                acc: a,
+                                label: M.label,
+                                unit: unitForCell,
+                                value: val,
+                                delta,
+                                metricKey: key,
+                                valuesAcross: valuesAcross.map(v => ({ id: v.id, title: v.title ?? undefined, value: v.value })),
 
-                {/* Utropspris (mobile) */}
-                <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
-                  {columns.map((a) => {
-                    const base = current ? (current.kind === "current" ? current.currentValuation : (current as any).begartPris) : undefined;
-                    const val = a.kind === "current" ? a.currentValuation : (a as any).begartPris;
-                    const delta = base != null && val != null ? val - base : null;
-                    const tone = deltaVariant(delta as any, false);
-                    return (
-                      <div key={a.id + "utp"} className="px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => openCell({
-                            acc: a,
-                            label: "Utropspris",
-                            unit: "kr",
-                            value: val ?? undefined,
-                            delta,
-                            metricKey: "utropspris",
-                            valuesAcross: columns.map(c => ({ id: c.id, title: c.title, value: c.kind === "current" ? c.currentValuation : (c as any).begartPris })),
-                          })}
-                          className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <MobileLabel label="Utropspris" unit="kr" />
-                          <div className="flex items-center gap-1 leading-none">
-                            <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "—"}</div>
-                            {(() => {
-                              const best = bestValue(columns.map((c) => c.kind === "current" ? c.currentValuation : (c as any).begartPris), /* goodWhenHigher= */ false);
-                              const isBest = val != null && best != null && val === best;
-                              if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
-                              if (a.kind === "current" || !delta || delta === 0) return null;
-                              const up = (delta as number) > 0;
-                              const Icon = up ? ArrowUpRight : ArrowDownRight;
-                              return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                            })()}
+                                breakdown: key === "totalMonthlyCost" ? metrics[key].breakdown?.(a, { current, finance }) : undefined,
+                              })}
+                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <MobileLabel label={M.label} unit={M.unit} />
+                              <div className="flex items-center gap-1 leading-none">
+                                <div className="text-xl font-bold inline-flex items-center gap-1">
+                                  {valueText}
+                                  {key === "totalMonthlyCost" && (a as any).maintenanceUnknown ? (
+                                    <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                      <Asterisk className="h-3 w-3 text-muted-foreground" />
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {(() => {
+                                  const isBest = val != null && best != null && val === best;
+                                  if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
+                                  if (a.kind === "current" || !delta || delta === 0) return null;
+                                  const up = (delta as number) > 0;
+                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                })()}
+                              </div>
+                            </button>
                           </div>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+
+
+
 
                 {/* Kontantinsats (mobile) */}
                 <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
@@ -361,167 +324,62 @@ export default function ComparePage() {
               <div className="block">
               <div className="min-w-[720px]">
 
-                <CompareRow label="Månadskostnad" unit="kr/mån" gridTemplate={gridTemplate} labelClassName="py-5">
-                  {columns.map((a) => {
-                    const delta = current && a.totalMonthlyCost != null && current.totalMonthlyCost != null ? a.totalMonthlyCost - current.totalMonthlyCost : null;
-                    const tone = deltaVariant(delta as any, false);
-                    return (
-                      <div key={a.id}>
-                        <CompareCell onClick={() => openCell({
-  acc: a,
-  label: "Månadskostnad",
-  unit: "kr",
-  value: a.totalMonthlyCost ?? undefined,
-  delta,
-  metricKey: "totalMonthlyCost",
-  breakdown: [
-    { label: "Avgift / hyra", value: Math.round(a.hyra ?? 0) },
-    { label: "Drift (per månad)", value: a.driftkostnader ? Math.round(a.driftkostnader / 12) : 0, note: a.maintenanceUnknown ? "uppskattad 0 kr (okänt)" : undefined },
-    { label: "Ränta", value: Math.round(a.rantaPerManad ?? 0) },
-    { label: "Amortering", value: Math.round(a.amorteringPerManad ?? 0), note: (() => { const mi = (finance?.incomeMonthlyPerson1 ?? 0) + (finance?.incomeMonthlyPerson2 ?? 0); const ai = mi * 12; const lan = (a as any).lan as number | undefined; return lan != null && ai > 0 && (lan/ai) > 4.5 ? "+1% skuldkvotstillägg" : undefined; })() },
-  ],
-  valuesAcross: columns.map(c => ({ id: c.id, title: c.title, value: c.totalMonthlyCost ?? undefined })),
-})}>
-                          <div className="text-xl font-bold inline-flex items-center gap-1">
-                            {a.totalMonthlyCost != null ? `${a.totalMonthlyCost.toLocaleString("sv-SE")} kr` : "—"}
-                            {a.maintenanceUnknown ? (
-                              <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
-                                <Asterisk className="h-4 w-4 text-muted-foreground" />
-                              </span>
-                            ) : null}
+                {/* Rows (registry-driven) */}
+                {(["totalMonthlyCost", "utropspris", "prisPerKvm", "kontantinsats", "dagarPaHemnet"] as MetricKey[]).map((key) => {
+                  const M = metrics[key];
+                  const unitForCell = M.unit?.startsWith("kr") ? "kr" : M.unit;
+                  return (
+                    <CompareRow key={key} label={M.label} unit={M.unit} gridTemplate={gridTemplate} labelClassName="py-5">
+                      {columns.map((a) => {
+                        const base = current ? M.valueOf(current, { current, finance }) : undefined;
+                        const val = M.valueOf(a, { current, finance });
+                        const delta = a.kind !== "current" && base != null && val != null ? val - base : null;
+                        const tone = deltaVariant(delta as any, M.goodWhenHigher);
+                        const best = bestValue(columns.map((c) => M.valueOf(c, { current, finance })), M.goodWhenHigher);
+                        const valuesAcross = metrics[key].valuesAcross
+                          ? metrics[key].valuesAcross!(columns, { current, finance })
+                          : columns.map((c) => ({ id: c.id, title: c.title, value: metrics[key].valueOf(c, { current, finance }) }));
+                        const valueText = val != null
+                          ? (M.unit?.startsWith("kr") ? `${val.toLocaleString("sv-SE")} kr` : `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}`)
+                          : "\u2014";
+                        return (
+                          <div key={a.id + key}>
+                            <CompareCell onClick={() => openCell({
+                              acc: a,
+                              label: M.label,
+                              unit: unitForCell,
+                              value: val,
+                              delta,
+                              metricKey: key,
+                              valuesAcross: valuesAcross.map(v => ({ id: v.id, title: v.title ?? undefined, value: v.value })),
+                              breakdown: key === "totalMonthlyCost" ? metrics[key].breakdown?.(a, { current, finance }) : undefined,
+                            })}>
+                              <div className="text-xl font-bold inline-flex items-center gap-1">
+                                {valueText}
+                                {key === "totalMonthlyCost" && (a as any).maintenanceUnknown ? (
+                                  <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                    <Asterisk className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                ) : null}
+                              </div>
+                              {(() => {
+                                const isBest = val != null && best != null && val === best;
+                                if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
+                                if (a.kind === "current" || !delta || delta === 0) return null;
+                                const up = (delta as number) > 0;
+                                const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
+                              })()}
+                            </CompareCell>
                           </div>
-                          {(() => {
-                            const val = a.totalMonthlyCost;
-                            const isBest = val != null && bestMonthlyCost != null && val === bestMonthlyCost;
-                            if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                            if (a.kind === "current" || !delta || delta === 0) return null;
-                            const up = delta > 0;
-                            const Icon = up ? ArrowUpRight : ArrowDownRight;
-                            return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                          })()}
-                        </CompareCell>
-                      </div>
-                    );
-                  })}
-                </CompareRow>
+                        );
+                      })}
+                    </CompareRow>
+                  );
+                })}
 
-                {/* Utropspris (desktop) */}
-                <CompareRow label="Utropspris" unit="kr" gridTemplate={gridTemplate} labelClassName="py-5">
-                  {columns.map((a) => {
-                    const base = current ? (current.kind === "current" ? current.currentValuation : (current as any).begartPris) : undefined;
-                    const val = a.kind === "current" ? a.currentValuation : (a as any).begartPris;
-                    const delta = base != null && val != null ? val - base : null;
-                    const tone = deltaVariant(delta as any, false);
-                    return (
-                      <div key={a.id + "utp-desktop"}>
-                        <CompareCell onClick={() => openCell({
-  acc: a,
-  label: "Utropspris",
-  unit: "kr",
-  value: val ?? undefined,
-  delta,
-  metricKey: "utropspris",
-  valuesAcross: columns.map(c => ({ id: c.id, title: c.title, value: c.kind === "current" ? c.currentValuation : (c as any).begartPris })),
-})}>
-                          <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "\u2014"}</div>
-                          {(() => {
-                            const best = bestValue(columns.map((c) => c.kind === "current" ? c.currentValuation : (c as any).begartPris), /* goodWhenHigher= */ false);
-                            const isBest = val != null && best != null && val === best;
-                            if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                            if (a.kind === "current" || !delta || delta === 0) return null;
-                            const up = (delta as number) > 0;
-                            const Icon = up ? ArrowUpRight : ArrowDownRight;
-                            return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                          })()}
-                        </CompareCell>
-                      </div>
-                    );
-                  })}
-                </CompareRow>
 
-                {/* Kontantinsats (desktop) */}
-                <CompareRow label="Kontantinsats" unit="kr" gridTemplate={gridTemplate} labelClassName="py-5">
-                  {columns.map((a) => {
-                    const base = (() => {
-                      if (!current) return undefined;
-                      if (current.kind === "current") {
-                        const loans = (((current.metrics as any)?.mortgage?.loans) ?? []) as { principal: number }[];
-                        const debt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                        const v = current.currentValuation ?? 0;
-                        return v > 0 ? v - debt : undefined;
-                      } else {
-                        const ki = (current as any).kontantinsats as number | undefined;
-                        if (ki != null) return ki;
-                        const bp = (current as any).begartPris as number | undefined;
-                        return bp != null ? Math.round(bp * 0.15) : undefined;
-                      }
-                    })();
-                    const val = (() => {
-                      if (a.kind === "current") {
-                        const loans = (((a.metrics as any)?.mortgage?.loans) ?? []) as { principal: number }[];
-                        const debt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                        const v = a.currentValuation ?? 0;
-                        return v > 0 ? v - debt : undefined;
-                      } else {
-                        const ki = (a as any).kontantinsats as number | undefined;
-                        if (ki != null) return ki;
-                        const bp = (a as any).begartPris as number | undefined;
-                        return bp != null ? Math.round(bp * 0.15) : undefined;
-                      }
-                    })();
-                    const delta = base != null && val != null ? (val - base) : null;
-                    const tone = deltaVariant(delta as any, false);
-                    return (
-                      <div key={a.id + "ki-desktop"}>
-                        <CompareCell onClick={() => openCell({
-  acc: a,
-  label: "Kontantinsats",
-  unit: "kr",
-  value: val ?? undefined,
-  delta,
-  metricKey: "kontantinsats",
-  valuesAcross: columns.map(c => {
-    if (c.kind === "current") {
-      const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-      const loans = mortgage?.loans ?? [];
-      const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-      const valuation = c.currentValuation ?? 0;
-      return { id: c.id, title: c.title, value: valuation > 0 ? valuation - totalDebt : undefined };
-    } else {
-      const ki = (c as any).kontantinsats as number | undefined;
-      if (ki != null) return { id: c.id, title: c.title, value: ki };
-      const bp = (c as any).begartPris as number | undefined;
-      return { id: c.id, title: c.title, value: bp != null ? Math.round(bp * 0.15) : undefined };
-    }
-  }),
-})}>
-                          <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "\u2014"}</div>
-                          {(() => {
-                            const best = bestValue(columns.map((c) => {
-                              if (c.kind === "current") {
-                                const loans = (((c.metrics as any)?.mortgage?.loans) ?? []) as { principal: number }[];
-                                const debt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                                const v = c.currentValuation ?? 0;
-                                return v > 0 ? v - debt : undefined;
-                              } else {
-                                const ki = (c as any).kontantinsats as number | undefined;
-                                if (ki != null) return ki;
-                                const bp = (c as any).begartPris as number | undefined;
-                                return bp != null ? Math.round(bp * 0.15) : undefined;
-                              }
-                            }), /* goodWhenHigher= */ false);
-                            const isBest = val != null && best != null && val === best;
-                            if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                            if (a.kind === "current" || !delta || delta === 0) return null;
-                            const up = (delta as number) > 0;
-                            const Icon = up ? ArrowUpRight : ArrowDownRight;
-                            return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                          })()}
-                        </CompareCell>
-                      </div>
-                    );
-                  })}
-                </CompareRow>
+
 
               </div>
             </div>
@@ -541,73 +399,86 @@ export default function ComparePage() {
           )}
           <div>
 
-            {/* Rows */}
-            {[{ key: "boarea", label: "Bostadsyta", unit: "m²", good: true }, { key: "antalRum", label: "Antal rum", unit: "rum", good: true }, { key: "tomtarea", label: "Tomtareal", unit: "m²", good: true }].map((row) => (
-              <div key={row.key}>
-                {/* Mobile row */}
-                {!isSm && (
-                  <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
-                    {columns.map((a) => {
-                      const base = (current as any)?.[row.key] as number | undefined;
-                      const val = (a as any)[row.key] as number | undefined;
-                      const delta = base != null && val != null ? val - base : null;
-                      const tone = deltaVariant(delta as any, row.good);
-                      return (
-                        <div key={a.id + row.key} className="px-2 py-2">
-                          <button
-                            type="button"
-                            onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta, metricKey: row.key as string, valuesAcross: columns.map(c => ({ id: c.id, title: c.title, value: (c as any)[row.key] as number | undefined })) })}
-                            className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <MobileLabel label={row.label} unit={row.unit} />
-                            <div className="flex items-center gap-1 leading-none">
-                              <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${row.unit}` : "—"}</div>
+            {/* Rows (registry-driven) */}
+            {(["boarea", "antalRum", "tomtarea", "byggar", "energiklass"] as MetricKey[]).map((key) => {
+              const M = metrics[key];
+              return (
+                <div key={key}>
+                  {/* Mobile row */}
+                  {!isSm && (
+                    <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
+                      {columns.map((a) => {
+                        const base = current ? M.valueOf(current, { current, finance }) : undefined;
+                        const val = M.valueOf(a, { current, finance });
+                        const delta = a.kind !== "current" && base != null && val != null ? val - base : null;
+                        const tone = deltaVariant(delta as any, M.goodWhenHigher);
+                        const best = bestValue(columns.map((c) => M.valueOf(c, { current, finance })), M.goodWhenHigher);
+                        const valuesAcross = columns.map((c) => ({ id: c.id, title: c.title, value: M.valueOf(c, { current, finance }) }));
+                        return (
+                          <div key={a.id + key} className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => openCell({
+                                acc: a,
+                                label: M.label,
+                                unit: M.unit,
+                                value: val,
+                                delta,
+                                metricKey: key,
+                                valuesAcross,
+                              })}
+                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <MobileLabel label={M.label} unit={M.unit} />
+                              <div className="flex items-center gap-1 leading-none">
+                                <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}` : "—"}</div>
+                                {(() => {
+                                  const isBest = val != null && best != null && val === best;
+                                  if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
+                                  if (a.kind === "current" || !delta || delta === 0) return null;
+                                  const up = (delta as number) > 0;
+                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                })()}
+                              </div>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Desktop row */}
+                  {isSm && (
+                    <CompareRow label={M.label} unit={M.unit} gridTemplate={gridTemplate}>
+                      {columns.map((a) => {
+                        const base = current ? M.valueOf(current, { current, finance }) : undefined;
+                        const val = M.valueOf(a, { current, finance });
+                        const delta = a.kind !== "current" && base != null && val != null ? val - base : null;
+                        const tone = deltaVariant(delta as any, M.goodWhenHigher);
+                        const best = bestValue(columns.map((c) => M.valueOf(c, { current, finance })), M.goodWhenHigher);
+                        const valuesAcross = columns.map((c) => ({ id: c.id, title: c.title, value: M.valueOf(c, { current, finance }) }));
+                        return (
+                          <div key={a.id + key}>
+                            <CompareCell onClick={() => openCell({ acc: a, label: M.label, unit: M.unit, value: val, delta, metricKey: key, valuesAcross })}>
+                              <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}` : "—"}</div>
                               {(() => {
-                                const best = bestValue(columns.map((c) => (c as any)[row.key] as number | undefined), row.good);
                                 const isBest = val != null && best != null && val === best;
-                                if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
+                                if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
                                 if (a.kind === "current" || !delta || delta === 0) return null;
                                 const up = (delta as number) > 0;
                                 const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
                               })()}
-                            </div>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Desktop row */}
-                {isSm && (
-                  <CompareRow label={row.label} unit={row.unit} gridTemplate={gridTemplate}>
-                    {columns.map((a) => {
-                      const base = (current as any)?.[row.key] as number | undefined;
-                      const val = (a as any)[row.key] as number | undefined;
-                      const delta = base != null && val != null ? val - base : null;
-                      const tone = deltaVariant(delta as any, row.good);
-                      return (
-                        <div key={a.id + row.key}>
-                          <CompareCell onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta, metricKey: row.key as string, valuesAcross: columns.map(c => ({ id: c.id, title: c.title, value: (c as any)[row.key] as number | undefined })) })}>
-                            <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${row.unit}` : "—"}</div>
-                            {(() => {
-                              const best = bestValue(columns.map((c) => (c as any)[row.key] as number | undefined), row.good);
-                              const isBest = val != null && best != null && val === best;
-                              if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                              if (a.kind === "current" || !delta || delta === 0) return null;
-                              const up = (delta as number) > 0;
-                              const Icon = up ? ArrowUpRight : ArrowDownRight;
-                              return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                            })()}
-                          </CompareCell>
-                        </div>
-                      );
-                    })}
-                  </CompareRow>
-                )}
-              </div>
-            ))}
+                            </CompareCell>
+                          </div>
+                        );
+                      })}
+                    </CompareRow>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -623,226 +494,81 @@ export default function ComparePage() {
           )}
           <div>
 
-            {[{ key: "hyra", label: "Hyra/avgift", unit: "kr/mån", fmt: (n: number) => `${n.toLocaleString("sv-SE")} kr/mån`, good: false }, { key: "driftkostnader", label: "Driftkostnad", unit: "kr/mån", fmt: (n: number) => `${Math.round(n / 12).toLocaleString("sv-SE")} kr/mån`, good: false }, { key: "amorteringPerManad", label: "Amortering", unit: "kr/mån", fmt: (n: number) => `${n.toLocaleString("sv-SE")} kr/mån`, good: false }, { key: "rantaPerManad", label: "Ränta", unit: "kr/mån", fmt: (n: number) => `${n.toLocaleString("sv-SE")} kr/mån`, good: false }].map((row) => (
-              <div key={row.key}>
-                {/* Mobile row */}
-                {!isSm && (
-                  <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
-                    {columns.map((a) => {
-                      const base = (() => {
-                        if (!current) return undefined;
-                        if (row.key === "utropspris") return current.kind === "current" ? current.currentValuation : (current as any).begartPris;
-                        if (row.key === "kontantinsats") {
-                          if (current.kind === "current") {
-                            const mortgage = (current.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                            const loans = mortgage?.loans ?? [];
-                            const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                            const valuation = current.currentValuation ?? 0;
-                            return valuation > 0 ? valuation - totalDebt : undefined;
-                          } else {
-                            const bp = (current as any).begartPris as number | undefined;
-                            return bp != null ? Math.round(bp * 0.15) : undefined;
-                          }
-                        }
-                        if (row.key === "driftkostnader") return (current as any)?.driftkostnader as number | undefined;
-                        return (current as any)?.[row.key] as number | undefined;
-                      })();
-                      const raw = (() => {
-                        if (row.key === "utropspris") return a.kind === "current" ? a.currentValuation : (a as any).begartPris;
-                        if (row.key === "kontantinsats") {
-                          if (a.kind === "current") {
-                            const mortgage = (a.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                            const loans = mortgage?.loans ?? [];
-                            const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                            const valuation = a.currentValuation ?? 0;
-                            return valuation > 0 ? valuation - totalDebt : undefined;
-                          } else {
-                            const ki = (a as any).kontantinsats as number | undefined;
-                            if (ki != null) return ki;
-                            const bp = (a as any).begartPris as number | undefined;
-                            return bp != null ? Math.round(bp * 0.15) : undefined;
-                          }
-                        }
-                        return (a as any)[row.key] as number | undefined;
-                      })();
-                      const val = raw != null ? (row.key === "driftkostnader" ? (raw > 0 ? Math.round(raw / 12) : undefined) : raw) : undefined;
-                      const baseAdj = base != null ? (row.key === "driftkostnader" ? (base > 0 ? Math.round(base / 12) : undefined) : base) : undefined;
-                      const delta = baseAdj != null && val != null ? val - baseAdj : null;
-                      const tone = deltaVariant(delta as any, false);
-                      return (
-                        <div key={a.id + row.key} className="px-2 py-2">
-                          <button
-                            type="button"
-                            onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta, metricKey: row.key as string, valuesAcross: columns.map(c => {
-  const rawC = (() => {
-    if (row.key === "utropspris") return c.kind === "current" ? c.currentValuation : (c as any).begartPris;
-    if (row.key === "kontantinsats") {
-      if (c.kind === "current") {
-        const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-        const loans = mortgage?.loans ?? [];
-        const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-        const valuation = c.currentValuation ?? 0;
-        return valuation > 0 ? valuation - totalDebt : undefined;
-      } else {
-        const ki = (c as any).kontantinsats as number | undefined;
-        if (ki != null) return ki;
-        const bp = (c as any).begartPris as number | undefined;
-        return bp != null ? Math.round(bp * 0.15) : undefined;
-      }
-    }
-    return (c as any)[row.key] as number | undefined;
-  })();
-  const valC = rawC != null ? (row.key === "driftkostnader" ? (rawC > 0 ? Math.round(rawC / 12) : undefined) : rawC) : undefined;
-  return { id: c.id, title: c.title, value: valC };
-}) })}
-                            className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <MobileLabel label={row.label} unit={row.unit} />
-                            <div className="flex items-center gap-1 leading-none">
-                              <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "—"}</div>
+            {/* Rows (registry-driven) */}
+            {(["hyra", "driftkostnaderMonthly", "amorteringPerManad", "rantaPerManad"] as MetricKey[]).map((key) => {
+              const M = metrics[key];
+              const unitForCell = M.unit?.startsWith("kr") ? "kr" : M.unit;
+              return (
+                <div key={key}>
+                  {/* Mobile row */}
+                  {!isSm && (
+                    <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
+                      {columns.map((a) => {
+                        const base = current ? M.valueOf(current, { current, finance }) : undefined;
+                        const val = M.valueOf(a, { current, finance });
+                        const delta = a.kind !== "current" && base != null && val != null ? val - base : null;
+                        const tone = deltaVariant(delta as any, M.goodWhenHigher);
+                        const best = bestValue(columns.map((c) => M.valueOf(c, { current, finance })), M.goodWhenHigher);
+                        const valuesAcross = columns.map((c) => ({ id: c.id, title: c.title, value: M.valueOf(c, { current, finance }) }));
+                        const valueText = val != null ? (M.unit?.startsWith("kr") ? `${val.toLocaleString("sv-SE")} kr` : `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}`) : "—";
+                        return (
+                          <div key={a.id + key} className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => openCell({ acc: a, label: M.label, unit: unitForCell, value: val, delta, metricKey: key, valuesAcross })}
+                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <MobileLabel label={M.label} unit={M.unit} />
+                              <div className="flex items-center gap-1 leading-none">
+                                <div className="text-xl font-bold">{valueText}</div>
+                                {(() => {
+                                  const isBest = val != null && best != null && val === best;
+                                  if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
+                                  if (a.kind === "current" || !delta || delta === 0) return null;
+                                  const up = (delta as number) > 0;
+                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                })()}
+                              </div>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Desktop row */}
+                  {isSm && (
+                    <CompareRow label={M.label} unit={M.unit} gridTemplate={gridTemplate}>
+                      {columns.map((a) => {
+                        const base = current ? M.valueOf(current, { current, finance }) : undefined;
+                        const val = M.valueOf(a, { current, finance });
+                        const delta = a.kind !== "current" && base != null && val != null ? val - base : null;
+                        const tone = deltaVariant(delta as any, M.goodWhenHigher);
+                        const best = bestValue(columns.map((c) => M.valueOf(c, { current, finance })), M.goodWhenHigher);
+                        const valuesAcross = columns.map((c) => ({ id: c.id, title: c.title, value: M.valueOf(c, { current, finance }) }));
+                        const valueText = val != null ? (M.unit?.startsWith("kr") ? `${val.toLocaleString("sv-SE")} kr` : `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}`) : "—";
+                        return (
+                          <div key={a.id + key}>
+                            <CompareCell onClick={() => openCell({ acc: a, label: M.label, unit: unitForCell, value: val, delta, metricKey: key, valuesAcross })}>
+                              <div className="text-xl font-bold">{valueText}</div>
                               {(() => {
-                                const best = bestValue(columns.map((c) => {
-                                  const rawC = (() => {
-                                    if (row.key === "utropspris") return c.kind === "current" ? c.currentValuation : (c as any).begartPris;
-                                    if (row.key === "kontantinsats") {
-                                      if (c.kind === "current") {
-                                        const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                                        const loans = mortgage?.loans ?? [];
-                                        const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                                        const valuation = c.currentValuation ?? 0;
-                                        return valuation > 0 ? valuation - totalDebt : undefined;
-                                      } else {
-                                        const ki = (c as any).kontantinsats as number | undefined;
-                                        if (ki != null) return ki;
-                                        const bp = (c as any).begartPris as number | undefined;
-                                        return bp != null ? Math.round(bp * 0.15) : undefined;
-                                      }
-                                    }
-                                    return (c as any)[row.key] as number | undefined;
-                                  })();
-                                  return rawC != null ? (row.key === "driftkostnader" ? (rawC > 0 ? Math.round(rawC / 12) : undefined) : rawC) : undefined;
-                                }), /* goodWhenHigher= */ false);
                                 const isBest = val != null && best != null && val === best;
-                                if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
+                                if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
                                 if (a.kind === "current" || !delta || delta === 0) return null;
                                 const up = (delta as number) > 0;
                                 const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
+                                return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
                               })()}
-                            </div>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Desktop row */}
-                {isSm && (
-                  <CompareRow label={row.label} unit={row.unit} gridTemplate={gridTemplate}>
-                    {columns.map((a) => {
-                      const base = (() => {
-                        if (!current) return undefined;
-                        if (row.key === "utropspris") return current.kind === "current" ? current.currentValuation : (current as any).begartPris;
-                        if (row.key === "kontantinsats") {
-                          if (current.kind === "current") {
-                            const mortgage = (current.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                            const loans = mortgage?.loans ?? [];
-                            const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                            const valuation = current.currentValuation ?? 0;
-                            return valuation > 0 ? valuation - totalDebt : undefined;
-                          } else {
-                            const bp = (current as any).begartPris as number | undefined;
-                            return bp != null ? Math.round(bp * 0.15) : undefined;
-                          }
-                        }
-                        if (row.key === "driftkostnader") return (current as any)?.driftkostnader as number | undefined;
-                        return (current as any)?.[row.key] as number | undefined;
-                      })();
-                      const raw = (() => {
-                        if (row.key === "utropspris") return a.kind === "current" ? a.currentValuation : (a as any).begartPris;
-                        if (row.key === "kontantinsats") {
-                          if (a.kind === "current") {
-                            const mortgage = (a.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                            const loans = mortgage?.loans ?? [];
-                            const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                            const valuation = a.currentValuation ?? 0;
-                            return valuation > 0 ? valuation - totalDebt : undefined;
-                          } else {
-                            const ki = (a as any).kontantinsats as number | undefined;
-                            if (ki != null) return ki;
-                            const bp = (a as any).begartPris as number | undefined;
-                            return bp != null ? Math.round(bp * 0.15) : undefined;
-                          }
-                        }
-                        return (a as any)[row.key] as number | undefined;
-                      })();
-                      const val = raw != null ? (row.key === "driftkostnader" ? (raw > 0 ? Math.round(raw / 12) : undefined) : raw) : undefined;
-                      const baseAdj = base != null ? (row.key === "driftkostnader" ? (base > 0 ? Math.round(base / 12) : undefined) : base) : undefined;
-                      const delta = baseAdj != null && val != null ? val - baseAdj : null;
-                      const tone = deltaVariant(delta as any, false);
-                      return (
-                        <div key={a.id + row.key}>
-                          <CompareCell onClick={() => openCell({ acc: a, label: row.label, unit: row.unit, value: val, delta, metricKey: row.key as string, valuesAcross: columns.map(c => {
-  const rawC = (() => {
-    if (row.key === "utropspris") return c.kind === "current" ? c.currentValuation : (c as any).begartPris;
-    if (row.key === "kontantinsats") {
-      if (c.kind === "current") {
-        const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-        const loans = mortgage?.loans ?? [];
-        const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-        const valuation = c.currentValuation ?? 0;
-        return valuation > 0 ? valuation - totalDebt : undefined;
-      } else {
-        const ki = (c as any).kontantinsats as number | undefined;
-        if (ki != null) return ki;
-        const bp = (c as any).begartPris as number | undefined;
-        return bp != null ? Math.round(bp * 0.15) : undefined;
-      }
-    }
-    return (c as any)[row.key] as number | undefined;
-  })();
-  const valC = rawC != null ? (row.key === "driftkostnader" ? (rawC > 0 ? Math.round(rawC / 12) : undefined) : rawC) : undefined;
-  return { id: c.id, title: c.title, value: valC };
-}) })}>
-                            <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "—"}</div>
-                            {(() => {
-                              const best = bestValue(columns.map((c) => {
-                                const rawC = (() => {
-                                  if (row.key === "utropspris") return c.kind === "current" ? c.currentValuation : (c as any).begartPris;
-                                  if (row.key === "kontantinsats") {
-                                    if (c.kind === "current") {
-                                      const mortgage = (c.metrics as any)?.mortgage as { loans?: { principal: number }[] } | undefined;
-                                      const loans = mortgage?.loans ?? [];
-                                      const totalDebt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                                      const valuation = c.currentValuation ?? 0;
-                                      return valuation > 0 ? valuation - totalDebt : undefined;
-                                    } else {
-                                      const ki = (c as any).kontantinsats as number | undefined;
-                                      if (ki != null) return ki;
-                                      const bp = (c as any).begartPris as number | undefined;
-                                      return bp != null ? Math.round(bp * 0.15) : undefined;
-                                    }
-                                  }
-                                  return (c as any)[row.key] as number | undefined;
-                                })();
-                                return rawC != null ? (row.key === "driftkostnader" ? (rawC > 0 ? Math.round(rawC / 12) : undefined) : rawC) : undefined;
-                              }), /* goodWhenHigher= */ false);
-                              const isBest = val != null && best != null && val === best;
-                              if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                              if (a.kind === "current" || !delta || delta === 0) return null;
-                              const up = (delta as number) > 0;
-                              const Icon = up ? ArrowUpRight : ArrowDownRight;
-                              return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                            })()}
-                          </CompareCell>
-                        </div>
-                      );
-                    })}
-                  </CompareRow>
-                )}
-              </div>
-            ))}
+                            </CompareCell>
+                          </div>
+                        );
+                      })}
+                    </CompareRow>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
 

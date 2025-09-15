@@ -1,14 +1,41 @@
 export interface PropertyData {
+  // Core
   price: number | null;
   monthlyFee: number | null; // hyra/avgift per month
   operatingCost: number | null; // annual drift
   address: string | null;
   postort: string | null; // e.g., stadsdel/postort
   kommun: string | null;  // e.g., Uppsala kommun
+  region?: string | null;
   livingArea: number | null; // boarea (m²)
+  supplementalArea?: number | null; // biarea (m²)
+  landArea?: number | null; // tomtarea (m²)
   rooms: number | null; // antal rum
   constructionYear: number | null; // byggår
+  squareMeterPrice?: number | null;
   imageUrl: string | null;
+  images?: string[];
+  floorPlans?: string[];
+  openHouses?: { start: string; end: string; description?: string }[];
+  // Meta
+  type?: string | null;
+  tenure?: string | null;
+  energyClass?: string | null; // A-G
+  daysOnHemnet?: number | null;
+  timesViewed?: number | null;
+  labels?: string[];
+  // Optional canonical source links (populated when scraping Hemnet)
+  hemnetUrl?: string;
+  realtorUrl?: string;
+}
+
+export function isHemnetListingUrl(s: string) {
+  try {
+    const u = new URL(s);
+    return u.hostname.includes("hemnet.se") && u.pathname.includes("/bostad/");
+  } catch {
+    return false;
+  }
 }
 
 function toNumberOrNull(input: string | null | undefined): number | null {

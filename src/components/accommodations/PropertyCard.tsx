@@ -106,6 +106,27 @@ export default function PropertyCard({ item, className }: PropertyCardProps) {
                   </div>
                 )}
               </div>
+              <div className="shrink-0 flex items-center gap-2">
+                {(() => {
+                  const src = (item.metrics as any)?.sourceUrls ?? {};
+                  const hemnet: string | undefined = src?.hemnet ?? undefined;
+                  const realtor: string | undefined = src?.realtor ?? undefined;
+                  return (
+                    <>
+                      {hemnet && (
+                        <a href={hemnet} target="_blank" rel="noopener noreferrer" className="text-xs underline decoration-dotted hover:decoration-solid text-primary">
+                          Hemnet
+                        </a>
+                      )}
+                      {realtor && (
+                        <a href={realtor} target="_blank" rel="noopener noreferrer" className="text-xs underline decoration-dotted hover:decoration-solid text-primary">
+                          Mäklare
+                        </a>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
               <div className="shrink-0 -mt-1 -me-1 flex items-center gap-1">
                 <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Redigera" onClick={() => setEditOpen(true)}>
                   <Pencil className="h-4 w-4" />

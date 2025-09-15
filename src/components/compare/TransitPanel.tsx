@@ -3,17 +3,9 @@
 import * as React from "react";
 import { Clock, Award, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { TransitDrawerContext } from "@/components/route/TransitDrawer";
+import { bestValue, deltaVariant } from "@/lib/compareMetrics";
 
-function bestValue(values: Array<number | undefined>, goodWhenHigher: boolean): number | undefined {
-  const nums = values.filter((v): v is number => v != null);
-  if (nums.length === 0) return undefined;
-  return goodWhenHigher ? Math.max(...nums) : Math.min(...nums);
-}
-function deltaVariant(delta: number | null | undefined, goodWhenHigher: boolean): "good" | "bad" | "neutral" {
-  if (delta == null || delta === 0) return "neutral";
-  const favorable = goodWhenHigher ? delta > 0 : delta < 0;
-  return favorable ? "good" : "bad";
-}
+
 const toneClass = (tone: "good" | "bad" | "neutral") =>
   tone === "good" ? "stroke-chart-2" : tone === "bad" ? "stroke-chart-5" : "stroke-muted-foreground";
 

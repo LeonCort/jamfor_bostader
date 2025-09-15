@@ -600,9 +600,26 @@ export function useAccommodations() {
         hyra: pd.monthlyFee ?? undefined,
         antalRum: pd.rooms ?? undefined,
         boarea: pd.livingArea ?? undefined,
+        biarea: (pd as any)?.supplementalArea ?? undefined,
+        tomtarea: (pd as any)?.landArea ?? undefined,
         constructionYear: pd.constructionYear ?? undefined,
         metrics: {
           ...(sourceUrl ? { sourceUrl } : {}),
+          ...((pd as any)?.hemnetUrl || (pd as any)?.realtorUrl
+            ? { sourceUrls: { hemnet: (pd as any)?.hemnetUrl, realtor: (pd as any)?.realtorUrl } }
+            : {}),
+          ...((pd as any)?.type || (pd as any)?.tenure || (pd as any)?.energyClass
+            ? { meta: { type: (pd as any)?.type, tenure: (pd as any)?.tenure, energyClass: (pd as any)?.energyClass } }
+            : {}),
+          ...((pd as any)?.images || (pd as any)?.floorPlans
+            ? { media: { images: (pd as any)?.images ?? [], floorPlans: (pd as any)?.floorPlans ?? [] } }
+            : {}),
+          ...((pd as any)?.daysOnHemnet != null || (pd as any)?.timesViewed != null || (pd as any)?.labels
+            ? { hemnetStats: { daysOnHemnet: (pd as any)?.daysOnHemnet ?? null, timesViewed: (pd as any)?.timesViewed ?? null, labels: (pd as any)?.labels ?? [] } }
+            : {}),
+          ...((pd as any)?.openHouses
+            ? { openHouses: (pd as any)?.openHouses }
+            : {}),
         },
       };
       commit((prev) => [item, ...prev]);

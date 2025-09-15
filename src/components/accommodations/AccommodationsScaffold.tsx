@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Building2, Plus, Pencil, Trash2, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock, Users, Asterisk } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Building2, Pencil, Trash2, X, CircleDollarSign, Ruler, BedDouble, Square, Briefcase, ShoppingCart, School, Clock, Users, Asterisk, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAccommodations } from "@/lib/accommodations";
-import { parsePropertyUrl } from "@/lib/parse";
+
 import { cn } from "@/lib/utils";
 import { Drawer } from "vaul";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
@@ -44,7 +44,7 @@ function formatSek(n?: number) {
 
 
 export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) {
-  const { accommodations, current, places, commuteFor, addFromParsed, remove, update } = useAccommodations();
+  const { accommodations, current, places, commuteFor, remove, update } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -98,19 +98,6 @@ export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) 
     });
   }, [editItem]);
 
-  // URL input and parsing
-  const [urlInput, setUrlInput] = useState("");
-  const urlInputRef = useRef<HTMLInputElement>(null);
-  function handleAnalyze(u?: string) {
-    const s = (u ?? urlInput).trim();
-    if (!s) return;
-    const parsed = parsePropertyUrl(s);
-    if (!parsed) return;
-    const added = addFromParsed(parsed, s);
-    setUrlInput("");
-    setSelectedId(added.id);
-  }
-
 
   // Helpers for formatting and delta styling
 
@@ -134,10 +121,10 @@ export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) 
 
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 md:py-0 md:h-[calc(100dvh-3.5rem)] md:overflow-hidden">
+    <div className="mx-auto max-w-screen-2xl px-4 sm:px-4 md:py-0 md:h-[calc(100dvh-3.5rem)] md:overflow-hidden">
       <div className="grid md:h-full gap-6 md:grid-cols-[360px_1fr] lg:grid-cols-[400px_1fr]">
         {/* Left rail */}
-        <aside className="space-y-6 border-e border-border pe-6 py-6 md:overflow-y-auto">
+        <aside className="space-y-6 border-e border-border py-6 md:overflow-y-auto">
           <div>
             <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Jämför dina</h1>
             <p className="text-3xl font-extrabold leading-tight tracking-tight text-primary sm:text-4xl">drömbostäder</p>
@@ -146,18 +133,6 @@ export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) 
             </p>
           </div>
 
-          <div className="space-y-3">
-            <input
-              ref={urlInputRef}
-              type="url"
-              placeholder="Klistra in en Hemnet‑länk här…"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              className="w-full rounded-lg border border-transparent bg-secondary/70 px-3 py-2 text-sm text-foreground shadow-sm outline-none ring-0 transition placeholder:text-muted-foreground/80 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
-            />
-            <Button className="h-10 w-full shadow-sm" onClick={() => handleAnalyze()}>Analysera bostad</Button>
-
-          </div>
 
           {/* Cards list */}
           <div className="space-y-3">
@@ -374,16 +349,6 @@ export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) 
             </div>
           </div>
 
-          {/* Add button (floating) */}
-          <Button
-            size="icon"
-            variant="secondary"
-            className="absolute bottom-6 right-6 h-10 w-10 rounded-full border border-border/60 bg-card/80 text-foreground shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60"
-            aria-label="Fokusera URL-fält"
-            onClick={() => urlInputRef.current?.focus()}
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
         </section>
 
         <AlertDialog open={!!confirmId} onOpenChange={(open) => { if (!open) { setConfirmId(null); } }}>
@@ -570,6 +535,7 @@ export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) 
                 {/* Tab content */}
                 <div className="mt-4 grow overflow-y-auto">
                   {detailsTab === "basic" && detailsItem && (
+                    <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                       <div className="rounded-md border p-3">
                         <div className="text-xs text-muted-foreground">Adress</div>
@@ -597,7 +563,72 @@ export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) 
                           <div>{formatSek(detailsItem.begartPris)}</div>
                         </div>
                       )}
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Byggår</div>
+                        <div>{detailsItem.constructionYear ?? "—"}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Energiklass</div>
+                        <div>{(detailsItem.metrics as any)?.meta?.energyClass ?? "—"}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Dagar på Hemnet</div>
+                        <div>{(detailsItem.metrics as any)?.hemnetStats?.daysOnHemnet ?? "—"}</div>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground">Visningar</div>
+                        <div>{(detailsItem.metrics as any)?.hemnetStats?.timesViewed ?? "—"}</div>
+                      </div>
                     </div>
+
+                    {/* Open houses */}
+                    {Array.isArray((detailsItem.metrics as any)?.openHouses) && ((detailsItem.metrics as any)?.openHouses?.length ?? 0) > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Calendar className="h-4 w-4" />
+                          <span>Visningar</span>
+                        </div>
+                        <div className="space-y-2">
+                          {((detailsItem.metrics as any)?.openHouses as any[]).map((oh, idx) => (
+                            <div key={idx} className="rounded-md border p-3 flex items-center justify-between gap-3 text-xs">
+                              <div className="text-muted-foreground">
+                                {new Date(oh.start).toLocaleString("sv-SE", { dateStyle: "medium", timeStyle: "short" })}
+                                {" — "}
+                                {new Date(oh.end).toLocaleString("sv-SE", { timeStyle: "short" })}
+                              </div>
+                              {oh.description && <div className="truncate">{oh.description}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sources */}
+                    <div className="mt-4">
+                      <div className="text-sm font-medium mb-2">Källor</div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        {(() => {
+                          const src = (detailsItem.metrics as any)?.sourceUrls ?? {};
+                          const hemnet: string | undefined = src?.hemnet ?? undefined;
+                          const realtor: string | undefined = src?.realtor ?? undefined;
+                          return (
+                            <>
+                              {hemnet && (
+                                <a href={hemnet} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted hover:decoration-solid text-primary">
+                                  Hemnet
+                                </a>
+                              )}
+                              {realtor && (
+                                <a href={realtor} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted hover:decoration-solid text-primary">
+                                  Mäklare
+                                </a>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    </>
                   )}
 
                   {detailsTab === "cost" && detailsItem && (
