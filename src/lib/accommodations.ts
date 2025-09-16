@@ -62,6 +62,21 @@ export type ImportantPlace = {
   leaveAt?: string;  // 'HH:MM' local time to leave the place
 };
 
+export type TravelMode = "transit" | "driving" | "bicycling";
+
+const COMMUTE_CACHE_KEY = "reskollen.commuteCache.v1";
+type CommuteCacheEntry = { minutes: number; updatedAt: number };
+function loadCommuteCache(): Record<string, CommuteCacheEntry> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(COMMUTE_CACHE_KEY) || "{}"); } catch { return {}; }
+}
+function saveCommuteCache(map: Record<string, CommuteCacheEntry>) {
+  try { localStorage.setItem(COMMUTE_CACHE_KEY, JSON.stringify(map)); } catch { /* ignore */ }
+}
+function getCacheKey(origin: string, destination: string, mode: TravelMode, arriveBy?: string | null, departAt?: string | null) {
+  return `${origin}::${destination}::${mode}::${arriveBy ?? ''}::${departAt ?? ''}`;
+}
+
 function randomFrom<T>(arr: T[]) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -339,6 +354,9 @@ export function useAccommodations() {
     downPaymentRate: FINANCE_DEFAULTS.downPaymentRate,
     interestRateAnnual: FINANCE_DEFAULTS.interestRateAnnual,
   });
+  // Live Directions API results (minutes) keyed by accommodationId -> placeId -> mode
+  const [realCommute, setRealCommute] = useState<Record<string, Record<string, Record<TravelMode, number>>>>({});
+
 
 
   // Load once on mount; seed if empty
@@ -384,8 +402,100 @@ export function useAccommodations() {
     return idx;
   }, [accommodations, places]);
 
+  // Fetch real commute times via our Directions API (replace mocks progressively)
+  useEffect(() => {
+    const accs = accommodations ?? [];
+    const ps = places ?? [];
+    if (accs.length === 0 || ps.length === 0) return;
+
+    let cancelled = false;
+    const TTL_MS = 24 * 60 * 60 * 1000; // 24h
+    const modes: TravelMode[] = ["transit", "driving", "bicycling"];
+
+    async function fetchPair(a: Accommodation, p: ImportantPlace, mode: TravelMode) {
+      const origin = a.address ?? a.title;
+      const destination = p.address ?? p.label;
+      if (!origin || !destination) return;
+
+      const cacheKey = getCacheKey(origin, destination, mode, p.arriveBy ?? null, null);
+      let cache = loadCommuteCache();
+      const entry = cache[cacheKey];
+      if (entry && Date.now() - entry.updatedAt < TTL_MS) {
+        if (!cancelled) {
+          const minutes = entry.minutes;
+          setRealCommute((prev) => ({
+            ...prev,
+            [a.id]: {
+              ...(prev[a.id] ?? {}),
+              [p.id]: { ...(prev[a.id]?.[p.id] ?? {}), [mode]: minutes },
+            },
+          }));
+        }
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({ origin, destination, mode });
+        if (mode === "transit" && p.arriveBy) params.set("arriveBy", p.arriveBy);
+        const resp = await fetch(`/api/directions?${params.toString()}`);
+        if (!resp.ok) return;
+        const json = await resp.json();
+        const minutes: number | null = json?.minutes ?? null;
+        if (!cancelled && minutes != null) {
+          setRealCommute((prev) => ({
+            ...prev,
+            [a.id]: {
+              ...(prev[a.id] ?? {}),
+              [p.id]: { ...(prev[a.id]?.[p.id] ?? {}), [mode]: minutes },
+            },
+          }));
+          cache = loadCommuteCache();
+          cache[cacheKey] = { minutes, updatedAt: Date.now() };
+          saveCommuteCache(cache);
+        }
+      } catch {
+        // ignore errors; keep mock
+      }
+    }
+
+    const tasks: Array<Promise<void>> = [];
+    for (const a of accs) {
+      for (const p of ps) {
+        if (!p?.id) continue;
+        for (const m of modes) {
+          if ((realCommute[a.id]?.[p.id]?.[m]) != null) continue; // already have it
+          tasks.push(fetchPair(a, p, m));
+        }
+      }
+    }
+    if (tasks.length === 0) return;
+
+    // Limit concurrency in simple chunks
+    const CONC = 4;
+    (async () => {
+      for (let i = 0; i < tasks.length; i += CONC) {
+        if (cancelled) break;
+        await Promise.all(tasks.slice(i, i + CONC));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [accommodations, places]);
+
+
+  function commuteForMode(accommodationId: string, mode: TravelMode): Record<string, number> {
+    const mock = commuteIndex[accommodationId] ?? {};
+    const real = realCommute[accommodationId] ?? {};
+    const merged: Record<string, number> = { ...mock };
+    for (const pid of Object.keys(real)) {
+      const v = real[pid]?.[mode];
+      if (typeof v === 'number') merged[pid] = v;
+    }
+    return merged;
+  }
+
   function commuteFor(accommodationId: string): Record<string, number> {
-    return commuteIndex[accommodationId] ?? {};
+    return commuteForMode(accommodationId, 'transit');
   }
 
   // Two-direction mock commute times per place: to (arriveBy) and from (leaveAt)
@@ -645,6 +755,6 @@ export function useAccommodations() {
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;
-  return { accommodations: accommodations ?? [], current, places: places ?? [], finance, commuteFor, commuteForTwo, ...api } as const;
+  return { accommodations: accommodations ?? [], current, places: places ?? [], finance, commuteFor, commuteForMode, commuteForTwo, ...api } as const;
 }
 

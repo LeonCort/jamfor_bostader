@@ -21,10 +21,10 @@ export default function OverviewPage() {
 
   const defaultOrder: CardFieldKey[] = ['price','totalMonthlyCost','downPayment','constructionYear','rooms','energyClass','livingArea','monthlyFee'];
   const defaultEnabled: Partial<Record<CardFieldKey, boolean>> = { price: true, totalMonthlyCost: true, downPayment: true, constructionYear: true, rooms: true, energyClass: true, livingArea: true, monthlyFee: true };
-  const defaultConfig: CardConfig = { showAll: false, order: defaultOrder, enabled: defaultEnabled };
+  const defaultConfig: CardConfig = { showAll: false, showCommute: true, commuteMode: 'transit', order: defaultOrder, enabled: defaultEnabled };
   const [cardConfig, setCardConfig] = useState<CardConfig>(defaultConfig);
 
-  const allKeys: CardFieldKey[] = [...defaultOrder, 'operatingMonthly','kontantinsats','lan','amortering','ranta'];
+  const allKeys: CardFieldKey[] = [...defaultOrder, 'plotArea','operatingMonthly','kontantinsats','lan','amortering','ranta'];
   const labels: Record<CardFieldKey, string> = {
     price: 'Pris',
     totalMonthlyCost: 'Totalkostnad',
@@ -33,6 +33,7 @@ export default function OverviewPage() {
     rooms: 'Rum',
     energyClass: 'Energiklass',
     livingArea: 'Storlek',
+    plotArea: 'Tomtarea',
     monthlyFee: 'Avgift',
     operatingMonthly: 'Drift / mån',
     kontantinsats: 'Kontantinsats',
@@ -118,7 +119,7 @@ export default function OverviewPage() {
                   <h2 className="text-lg font-semibold">Anpassa kort</h2>
                   <p className="text-xs text-muted-foreground">Välj vilka fält som visas och i vilken ordning.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 text-xs">
                     <input
                       type="checkbox"
@@ -127,6 +128,28 @@ export default function OverviewPage() {
                     />
                     Visa alla
                   </label>
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={cardConfig.showCommute !== false}
+                      onChange={(e) => setCardConfig((prev) => ({ ...prev, showCommute: e.target.checked }))}
+                    />
+                    Visa restider
+                  </label>
+                  {cardConfig.showCommute !== false && (
+                    <label className="flex items-center gap-2 text-xs">
+                      <span>Mode</span>
+                      <select
+                        className="rounded border bg-background px-2 py-1 text-xs"
+                        value={cardConfig.commuteMode ?? 'transit'}
+                        onChange={(e) => setCardConfig((prev) => ({ ...prev, commuteMode: e.target.value as any }))}
+                      >
+                        <option value="transit">Transit</option>
+                        <option value="driving">Bil</option>
+                        <option value="bicycling">Cykel</option>
+                      </select>
+                    </label>
+                  )}
                   <Button variant="secondary" size="sm" onClick={() => setCardConfig(defaultConfig)}>Återställ</Button>
                 </div>
               </div>

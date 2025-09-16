@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as Icons from "lucide-react";
-import { MapPin, Ruler, CircleDollarSign, ArrowRight, ArrowLeft, Calendar, Pencil, Trash2, PiggyBank, X, Bed, Leaf } from "lucide-react";
+import { MapPin, Ruler, CircleDollarSign, Calendar, Pencil, Trash2, PiggyBank, X, Bed, Leaf } from "lucide-react";
 import type { Accommodation } from "@/lib/accommodations";
 import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ export type CardFieldKey =
   | "constructionYear"
   | "rooms"
   | "livingArea"
+  | "plotArea"
   | "monthlyFee"
   | "operatingMonthly"
   | "kontantinsats"
@@ -39,6 +40,8 @@ function formatMinutes(n?: number) {
 
 export type CardConfig = {
   showAll?: boolean;
+  showCommute?: boolean; // Toggle for showing 'Viktiga platser' on the card
+  commuteMode?: 'transit' | 'driving' | 'bicycling';
   order: CardFieldKey[];
   enabled: Partial<Record<CardFieldKey, boolean>>;
 };
@@ -74,8 +77,8 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
     return item.address;
   }, [item.postort, item.kommun, item.address]);
 
-  // viktiga platser and commute times (to/from)
-  const { places, commuteForTwo, commuteFor, remove, update } = useAccommodations();
+  // viktiga platser and commute times
+  const { places, commuteForMode, remove, update } = useAccommodations();
 
   // Down payment (15% of price) or current = market value - loan
   const downPayment = React.useMemo(() => {
@@ -89,7 +92,8 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
     }
     return price != null ? Math.round(price * 0.15) : undefined;
   }, [item.kind, item.currentValuation, item.lan, listingPrice]);
-  const times = commuteForTwo(item.id);
+  const commuteMode = config?.commuteMode ?? 'transit';
+  const singleTimes = commuteForMode(item.id, commuteMode);
   const listedPlaces = React.useMemo(() => (places || []).filter(p => p.label || p.address), [places]);
 
   // local drawers/state
@@ -111,11 +115,12 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   const maintenancePerMonth = item.driftkostnader != null ? Math.round(item.driftkostnader / 12) : undefined;
 
   const defaultOrder: CardFieldKey[] = ['price','totalMonthlyCost','downPayment','constructionYear','rooms','energyClass','livingArea','monthlyFee'];
-  const allKeys: CardFieldKey[] = [...defaultOrder, 'operatingMonthly','kontantinsats','lan','amortering','ranta'];
+  const allKeys: CardFieldKey[] = [...defaultOrder, 'plotArea','operatingMonthly','kontantinsats','lan','amortering','ranta'];
   const order = config?.order ?? defaultOrder;
   const enabled = config?.enabled ?? {};
   const primaryKeys = order.filter((k) => enabled[k] !== false);
   const keys: CardFieldKey[] = (config?.showAll ? [...primaryKeys, ...allKeys.filter((k) => !primaryKeys.includes(k))] : primaryKeys) as CardFieldKey[];
+  const showCommute = config?.showCommute !== false;
 
   const specs: Record<CardFieldKey, { label: string; icon: any; value: string; clickable?: boolean; onClick?: () => void }> = {
     price: { label: 'Pris', icon: CircleDollarSign, value: formatSek(listingPrice) },
@@ -125,6 +130,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
     rooms: { label: 'Rum', icon: Bed, value: item.antalRum != null ? String(item.antalRum) : '—' },
     energyClass: { label: 'Energiklass', icon: Leaf, value: String(((item as any)?.metrics?.meta as any)?.energyClass ?? '—') },
     livingArea: { label: 'Storlek', icon: Ruler, value: item.boarea != null ? `${item.boarea} m²` : '—' },
+    plotArea: { label: 'Tomtarea', icon: Ruler, value: item.tomtarea != null ? `${item.tomtarea} m²` : '—' },
     monthlyFee: { label: 'Avgift', icon: CircleDollarSign, value: item.hyra != null ? `${item.hyra.toLocaleString('sv-SE')} kr/mån` : '—' },
     operatingMonthly: { label: 'Drift / mån', icon: CircleDollarSign, value: maintenancePerMonth != null ? `${maintenancePerMonth.toLocaleString('sv-SE')} kr/mån` : '—' },
     kontantinsats: { label: 'Kontantinsats', icon: PiggyBank, value: formatSek(item.kontantinsats) },
@@ -245,37 +251,27 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
             </div>
           </div>
 
-          {/* Viktiga platser */}
-          {listedPlaces.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Restider till viktiga platser</div>
-              <div className="space-y-2">
-                {listedPlaces.map((p) => {
-                  const t = times[p.id];
-                  const toMin = t?.to; // arriveBy
-                  const fromMin = t?.from; // leaveAt
-                  return (
-                    <div key={p.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <LucideIcon name={p.icon} className="h-4 w-4 text-muted-foreground" />
-                        <div className="truncate text-md">{p.label || p.address || "Plats"}</div>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <button type="button" className="inline-flex items-center gap-1 rounded-md border px-2 py-1 bg-background hover:bg-muted/50" onClick={() => openTransit({ origin: item.address ?? item.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}>
-                          <ArrowRight className="h-4.5 w-4.5 text-muted-foreground" />
-                          <span className="text-lg font-medium">{toMin != null ? toMin : "—"}</span>
-                          <span className="text-lg text-muted-foreground">min</span>
-                        </button>
-                        <button type="button" className="inline-flex items-center gap-1 rounded-md border px-2 py-1 bg-background hover:bg-muted/50" onClick={() => openTransit({ origin: item.address ?? item.title, destination: p.address ?? p.label, leaveAt: p.leaveAt, direction: "from" })}>
-                          <ArrowLeft className="h-4.5 w-4.5 text-muted-foreground" />
-                          <span className="font-medium text-lg">{fromMin != null ? fromMin : "—"}</span>
-                          <span className="text-lg text-muted-foreground">min</span>
-                        </button>
-                      </div>
+          {/* Restider som metrik-chips */}
+          {showCommute && listedPlaces.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {listedPlaces.map((p) => {
+                const min = singleTimes[p.id];
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => openTransit({ origin: item.address ?? item.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}
+                    className="text-left rounded-xl bg-muted/40 p-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring transition"
+                  >
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <LucideIcon name={p.icon} className="size-4" />
+                      <span className="text-xs font-medium">Restid</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="text-[11px] text-muted-foreground -mt-0.5 mb-1 truncate">– {p.label || p.address || 'Plats'}</div>
+                    <div className="text-lg font-semibold">{formatMinutes(min)}</div>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -438,7 +434,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                     {detailsTab === 'travel' && (
                       <div className="space-y-3 text-sm">
                         {listedPlaces.map((p) => {
-                          const times1 = commuteFor(item.id);
+                          const times1 = commuteForMode(item.id, commuteMode);
                           const min = times1[p.id];
                           return (
                             <div key={p.id} className="rounded-md border p-3 flex items-center justify-between gap-3">
