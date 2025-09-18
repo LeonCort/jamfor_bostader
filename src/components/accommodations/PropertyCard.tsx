@@ -329,6 +329,8 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
               <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[70vh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+                <Drawer.Title className="sr-only">Redigera bostad</Drawer.Title>
+
                 <div className="mx-auto max-w-screen-md h-full flex flex-col">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -439,6 +441,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
               <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[70vh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+                <Drawer.Title className="sr-only">Visa detaljer</Drawer.Title>
                 <div className="mx-auto max-w-screen-md h-full flex flex-col">
                   <div className="flex items-start justify-between gap-3">
                     <div>
