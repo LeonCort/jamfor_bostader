@@ -200,10 +200,14 @@ export default function ComparePage() {
                               <div className="flex items-center gap-1 leading-none">
                                 <div className="text-xl font-bold inline-flex items-center gap-1">
                                   {valueText}
-                                  {key === "totalMonthlyCost" && (a as any).maintenanceUnknown ? (
-                                    <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                  {key === "totalMonthlyCost" && (((a as any).driftkostnaderIsEstimated) || ((a as any).maintenanceUnknown)) ? (
+                                    (a as any).maintenanceUnknown ? (
+                                      <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                        <Asterisk className="h-3 w-3 text-muted-foreground" />
+                                      </span>
+                                    ) : (
                                       <Asterisk className="h-3 w-3 text-muted-foreground" />
-                                    </span>
+                                    )
                                   ) : null}
                                 </div>
                                 {(() => {
@@ -356,10 +360,14 @@ export default function ComparePage() {
                             })}>
                               <div className="text-xl font-bold inline-flex items-center gap-1">
                                 {valueText}
-                                {key === "totalMonthlyCost" && (a as any).maintenanceUnknown ? (
-                                  <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                {key === "totalMonthlyCost" && (((a as any).driftkostnaderIsEstimated) || ((a as any).maintenanceUnknown)) ? (
+                                  (a as any).maintenanceUnknown ? (
+                                    <span title="Driftkostnad saknas - total manadskostnad exkluderar drift">
+                                      <Asterisk className="h-4 w-4 text-muted-foreground" />
+                                    </span>
+                                  ) : (
                                     <Asterisk className="h-4 w-4 text-muted-foreground" />
-                                  </span>
+                                  )
                                 ) : null}
                               </div>
                               {(() => {
@@ -520,7 +528,12 @@ export default function ComparePage() {
                             >
                               <MobileLabel label={M.label} unit={M.unit} />
                               <div className="flex items-center gap-1 leading-none">
-                                <div className="text-xl font-bold">{valueText}</div>
+                                <div className="text-xl font-bold inline-flex items-center gap-1">
+                                  {valueText}
+                                  {key === "driftkostnaderMonthly" && ((a as any).driftkostnaderIsEstimated) ? (
+                                    <Asterisk className="h-4 w-4 text-muted-foreground" />
+                                  ) : null}
+                                </div>
                                 {(() => {
                                   const isBest = val != null && best != null && val === best;
                                   if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
@@ -551,7 +564,12 @@ export default function ComparePage() {
                         return (
                           <div key={a.id + key}>
                             <CompareCell onClick={() => openCell({ acc: a, label: M.label, unit: unitForCell, value: val, delta, metricKey: key, valuesAcross })}>
-                              <div className="text-xl font-bold">{valueText}</div>
+                              <div className="text-xl font-bold inline-flex items-center gap-1">
+                                {valueText}
+                                {key === "driftkostnaderMonthly" && ((a as any).driftkostnaderIsEstimated) ? (
+                                  <Asterisk className="h-4 w-4 text-muted-foreground" />
+                                ) : null}
+                              </div>
                               {(() => {
                                 const isBest = val != null && best != null && val === best;
                                 if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;

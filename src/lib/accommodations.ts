@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api as convexApi } from "@/../convex/_generated/api";
+
 import type { PropertyData } from "./parse";
 
 // Core types for an accommodation/listing and extensible metrics
@@ -44,6 +47,9 @@ export type Accommodation = {
   totalMonthlyCost?: SEK;
   // Whether annual maintenance/driftkostnader was missing (so monthly total excludes it)
   maintenanceUnknown?: boolean;
+  // If we had to estimate driftkostnader via the schablon model
+  driftkostnaderSchablon?: SEK;
+  driftkostnaderIsEstimated?: boolean;
 
   // Extensible metrics: commute times, distances, etc.
   metrics?: Record<string, unknown>;
@@ -158,6 +164,28 @@ const COLOR_CLASSES = [
   "bg-cyan-500",
 ];
 
+
+// Coerce heterogeneous values (numbers, strings, Money-like objects) to number
+function num(x: any): number | undefined {
+  if (x == null) return undefined;
+  if (typeof x === 'number' && Number.isFinite(x)) return x;
+  if (typeof x === 'string') {
+    const s = x.replace(/[^\d.,-]/g, '').replace(/\s+/g, '').replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (typeof x === 'object') {
+    const amt: any = (x as any)?.amount ?? (x as any)?.value ?? (x as any)?.raw ?? (x as any)?.v;
+    if (typeof amt === 'number' && Number.isFinite(amt)) return amt;
+    if (typeof amt === 'string') {
+      const s = amt.replace(/[^\d.,-]/g, '').replace(',', '.');
+      const n = Number(s);
+      return Number.isFinite(n) ? n : undefined;
+    }
+  }
+  return undefined;
+}
+
 function seedMockData(): Accommodation[] {
   const samples: Array<Partial<Accommodation> & { title: string; address: string }> = [
     { title: "2 rok nära Odenplan", address: "Vasastan, Stockholm" },
@@ -226,6 +254,8 @@ function ensureMockCompleteness(a: Accommodation): Accommodation {
   // Basic numbers
   if (next.antalRum == null) next.antalRum = Math.round(randomBetween(1, 5));
   if (next.boarea == null) next.boarea = Math.round(randomBetween(30, 120));
+
+
   if (next.kind !== "current") {
     if (next.begartPris == null) next.begartPris = Math.round(randomBetween(2.5, 8.5) * 1_000_000);
     if (next.driftkostnader == null) next.driftkostnader = Math.round(randomBetween(8_000, 28_000));
@@ -250,9 +280,46 @@ function ensureMockCompleteness(a: Accommodation): Accommodation {
   return next;
 }
 
+
+// In Convex mode, avoid filling financial mocks (hyra/driftkostnader/etc.). Only ensure image placeholder.
+function ensureMinimalDefaultsConvex(a: Accommodation): Accommodation {
+  const next: Accommodation = { ...a };
+  if (!next.imageUrl) next.imageUrl = placeholderImageUrl(next.id);
+  return next;
+}
+
+// Schablonmodell för årlig driftkostnad (villa)
+function computeSchablonDriftkostnad(a: Accommodation): number {
+  // 1) Grundkostnad
+  let total = 30000;
+  // 2) Tillägg baserat på boarea
+  const area = typeof a.boarea === 'number' && Number.isFinite(a.boarea) ? a.boarea : 0;
+  total += area * 150;
+  // 3) Justering baserat på byggår
+  const y = a.constructionYear;
+  if (typeof y === 'number' && Number.isFinite(y)) {
+    if (y >= 1900 && y <= 1979) total = Math.round(total * 1.10);
+    else if (y >= 1980 && y <= 1999) total = Math.round(total * 1.05);
+    // 2000+ no change
+  }
+  // 4) Justering baserat på energiklass
+  const energyClassRaw = ((a.metrics as any)?.meta?.energyClass ?? (a as any)?.meta?.energyClass) as string | undefined;
+  if (typeof energyClassRaw === 'string') {
+    const E = energyClassRaw.trim().toUpperCase();
+    if (E === 'A' || E === 'B') total = Math.round(total * 0.90);
+    else if (E === 'E' || E === 'F') total = Math.round(total * 1.05);
+    else if (E === 'G') total = Math.round(total * 1.10);
+    // C-D: no change
+  }
+  return Math.max(0, Math.round(total));
+}
+
 function computeDerived(a: Accommodation, finance: FinanceSettings): Accommodation {
-  const maintenanceUnknown = a.driftkostnader == null || a.driftkostnader === 0; // treat 0 as missing
-  const annualMaintenance = maintenanceUnknown ? 0 : (a.driftkostnader!);
+  const hadNoDrift = a.driftkostnader == null || a.driftkostnader === 0;
+  const schablon = hadNoDrift ? computeSchablonDriftkostnad(a) : undefined;
+  const annualMaintenance = (schablon ?? (a.driftkostnader ?? 0));
+  const maintenanceEstimated = schablon != null;
+  const maintenanceUnknown = !maintenanceEstimated && (a.driftkostnader == null || a.driftkostnader === 0);
   const maintenancePerMonth = Math.round(annualMaintenance / 12);
   const hyraPerManad = Math.round(a.hyra ?? 0);
 
@@ -326,6 +393,8 @@ function computeDerived(a: Accommodation, finance: FinanceSettings): Accommodati
     rantaPerManad,
     totalMonthlyCost,
     maintenanceUnknown,
+    driftkostnaderSchablon: maintenanceEstimated ? schablon : undefined,
+    driftkostnaderIsEstimated: maintenanceEstimated,
   };
 }
 
@@ -348,16 +417,32 @@ export type CurrentHomeInput = {
 };
 
 export function useAccommodations() {
+  const COMMUTE_SOURCE = process.env.NEXT_PUBLIC_COMMUTE_SOURCE ?? 'client';
+  const DATA_SOURCE = process.env.NEXT_PUBLIC_DATA_SOURCE ?? 'local';
+
+
   const [accommodations, setAccommodations] = useState<Accommodation[] | null>(null);
   const [places, setPlaces] = useState<ImportantPlace[] | null>(null);
   const [finance, setFinance] = useState<FinanceSettings>({
     downPaymentRate: FINANCE_DEFAULTS.downPaymentRate,
     interestRateAnnual: FINANCE_DEFAULTS.interestRateAnnual,
   });
+  // Convex hooks for server-side scheduling and reading results
+  const addAccommodationConv = useMutation(convexApi.accommodations.add);
+  const updateAccommodationConv = useMutation(convexApi.accommodations.update);
+  const removeAccommodationConv = useMutation(convexApi.accommodations.remove);
+  const upsertCurrentConv = useMutation((convexApi as any).accommodations.upsertCurrent);
+
+  const convexAccs = useQuery(convexApi.accommodations.list, {});
+  const financeRow = useQuery(convexApi.finance.get, {});
+  const bulkReplacePlaces = useMutation(convexApi.places.bulkReplace);
+  const upsertFinance = useMutation(convexApi.finance.upsert);
+
+  const convexPlaces = useQuery(convexApi.places.list, {});
+  const commuteResults = useQuery(convexApi.commute.listForUser, {});
+
   // Live Directions API results (minutes) keyed by accommodationId -> placeId -> mode
   const [realCommute, setRealCommute] = useState<Record<string, Record<string, Record<TravelMode, number>>>>({});
-
-
 
   // Load once on mount; seed if empty
   useEffect(() => {
@@ -370,6 +455,11 @@ export function useAccommodations() {
       incomeMonthlyPerson2: undefined,
     };
     setFinance(f);
+    if (DATA_SOURCE === 'convex') {
+      // In Convex mode, skip localStorage seeding; hydrate from Convex queries via effects
+      return;
+    }
+
 
     const loaded = loadFromStorage();
     if (loaded && loaded.length > 0) {
@@ -402,85 +492,185 @@ export function useAccommodations() {
     return idx;
   }, [accommodations, places]);
 
-  // Fetch real commute times via our Directions API (replace mocks progressively)
+  // Only populate from cache on load; no network calls here
   useEffect(() => {
     const accs = accommodations ?? [];
     const ps = places ?? [];
     if (accs.length === 0 || ps.length === 0) return;
+    const cache = loadCommuteCache();
+    const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-    let cancelled = false;
-    const TTL_MS = 24 * 60 * 60 * 1000; // 24h
-    const modes: TravelMode[] = ["transit", "driving", "bicycling"];
-
-    async function fetchPair(a: Accommodation, p: ImportantPlace, mode: TravelMode) {
-      const origin = a.address ?? a.title;
-      const destination = p.address ?? p.label;
-      if (!origin || !destination) return;
-
-      const cacheKey = getCacheKey(origin, destination, mode, p.arriveBy ?? null, null);
-      let cache = loadCommuteCache();
-      const entry = cache[cacheKey];
-      if (entry && Date.now() - entry.updatedAt < TTL_MS) {
-        if (!cancelled) {
-          const minutes = entry.minutes;
-          setRealCommute((prev) => ({
-            ...prev,
-            [a.id]: {
-              ...(prev[a.id] ?? {}),
-              [p.id]: { ...(prev[a.id]?.[p.id] ?? {}), [mode]: minutes },
-            },
-          }));
-        }
-        return;
-      }
-
-      try {
-        const params = new URLSearchParams({ origin, destination, mode });
-        if (mode === "transit" && p.arriveBy) params.set("arriveBy", p.arriveBy);
-        const resp = await fetch(`/api/directions?${params.toString()}`);
-        if (!resp.ok) return;
-        const json = await resp.json();
-        const minutes: number | null = json?.minutes ?? null;
-        if (!cancelled && minutes != null) {
-          setRealCommute((prev) => ({
-            ...prev,
-            [a.id]: {
-              ...(prev[a.id] ?? {}),
-              [p.id]: { ...(prev[a.id]?.[p.id] ?? {}), [mode]: minutes },
-            },
-          }));
-          cache = loadCommuteCache();
-          cache[cacheKey] = { minutes, updatedAt: Date.now() };
-          saveCommuteCache(cache);
-        }
-      } catch {
-        // ignore errors; keep mock
-      }
-    }
-
-    const tasks: Array<Promise<void>> = [];
+    const next: Record<string, Record<string, Record<TravelMode, number>>> = {};
     for (const a of accs) {
       for (const p of ps) {
-        if (!p?.id) continue;
-        for (const m of modes) {
-          if ((realCommute[a.id]?.[p.id]?.[m]) != null) continue; // already have it
-          tasks.push(fetchPair(a, p, m));
+        const origin = a.address ?? a.title;
+        const destination = p.address ?? p.label;
+        if (!origin || !destination) continue;
+        // Only hydrate transit from cache by default
+        const key = getCacheKey(origin, destination, 'transit', p.arriveBy ?? null, null);
+        const entry = cache[key];
+
+        if (entry && Date.now() - entry.updatedAt < TTL_MS) {
+          next[a.id] = next[a.id] ?? {};
+          next[a.id][p.id] = { ...(next[a.id][p.id] ?? {}), transit: entry.minutes } as Record<TravelMode, number>;
         }
       }
     }
-    if (tasks.length === 0) return;
-
-    // Limit concurrency in simple chunks
-    const CONC = 4;
-    (async () => {
-      for (let i = 0; i < tasks.length; i += CONC) {
-        if (cancelled) break;
-        await Promise.all(tasks.slice(i, i + CONC));
-      }
-    })();
-
-    return () => { cancelled = true; };
+    if (Object.keys(next).length > 0) {
+      setRealCommute((prev) => ({ ...prev, ...next }));
+    }
   }, [accommodations, places]);
+  // Overlay Convex commute results onto UI when using server source
+  useEffect(() => {
+    if (COMMUTE_SOURCE !== 'convex') return;
+    if (!commuteResults || !convexAccs || !convexPlaces) return;
+    const accIdToClient = new Map<string, string>();
+    for (const a of convexAccs) accIdToClient.set((a as any)._id, (a as any).clientId);
+    const placeIdToClient = new Map<string, string>();
+    for (const p of convexPlaces) placeIdToClient.set((p as any)._id, (p as any).clientId);
+
+    const next: Record<string, Record<string, Record<TravelMode, number>>> = {};
+    for (const r of commuteResults as any[]) {
+      const aLocal = accIdToClient.get(r.accommodationId);
+      const pLocal = placeIdToClient.get(r.placeId);
+      if (!aLocal || !pLocal) continue;
+      next[aLocal] = next[aLocal] ?? {};
+      const modes = (next[aLocal][pLocal] ?? {}) as Record<TravelMode, number>;
+      modes[r.mode as TravelMode] = r.minutes as number;
+      next[aLocal][pLocal] = modes;
+    }
+    if (Object.keys(next).length > 0) {
+      setRealCommute((prev) => ({ ...prev, ...next }));
+    }
+  }, [COMMUTE_SOURCE, commuteResults, convexAccs, convexPlaces]);
+  // Hydrate finance from Convex when in Convex mode
+  useEffect(() => {
+    if (DATA_SOURCE !== 'convex') return;
+    if (!financeRow) return;
+    const f = {
+      downPaymentRate: (financeRow as any).downPaymentRate ?? FINANCE_DEFAULTS.downPaymentRate,
+      interestRateAnnual: (financeRow as any).interestRateAnnual ?? FINANCE_DEFAULTS.interestRateAnnual,
+      incomeMonthlyPerson1: (financeRow as any).incomeMonthlyPerson1,
+      incomeMonthlyPerson2: (financeRow as any).incomeMonthlyPerson2,
+    } as FinanceSettings;
+    setFinance(f);
+  }, [DATA_SOURCE, financeRow]);
+
+  // Hydrate accommodations from Convex when in Convex mode
+  useEffect(() => {
+    if (DATA_SOURCE !== 'convex') return;
+    if (!convexAccs) return;
+    const mapped = (convexAccs as any[]).map((a) => ({
+      id: a.clientId ?? generateId(),
+      kind: a.kind,
+      title: a.title,
+      address: a.address,
+      postort: a.postort,
+      kommun: a.kommun,
+      imageUrl: a.imageUrl,
+      color: a.color,
+      position: a.position,
+      begartPris: a.begartPris,
+      driftkostnader: a.driftkostnader,
+      hyra: a.hyra,
+      antalRum: a.antalRum,
+      boarea: a.boarea,
+      biarea: a.biarea,
+      tomtarea: a.tomtarea,
+      constructionYear: a.constructionYear,
+      currentValuation: a.currentValuation,
+      metrics: {
+        ...(a.metrics ?? {}),
+        ...(a.meta ? { meta: a.meta } : {}),
+        ...(a.hemnetStats ? { hemnetStats: a.hemnetStats } : {}),
+        ...(a.media ? { media: a.media } : {}),
+        ...(a.sourceUrls ? { sourceUrls: a.sourceUrls } : {}),
+        ...(a.mortgage ? { mortgage: a.mortgage } : {}),
+      },
+    })) as Accommodation[];
+    const processed = mapped.map(ensureMinimalDefaultsConvex).map((x) => computeDerived(x, finance));
+    setAccommodations(processed);
+  }, [DATA_SOURCE, convexAccs, finance]);
+
+  // Hydrate places from Convex when in Convex mode
+  useEffect(() => {
+    if (DATA_SOURCE !== 'convex') return;
+    if (!convexPlaces) return;
+    const mapped = (convexPlaces as any[]).map((p) => ({
+      id: p.clientId,
+      label: p.label,
+      address: p.address,
+      icon: p.icon,
+      arriveBy: p.arriveBy,
+      leaveAt: p.leaveAt,
+    })) as ImportantPlace[];
+    setPlaces(mapped);
+  }, [DATA_SOURCE, convexPlaces]);
+
+
+
+  // Helper: fetch and cache minutes for a pair, defaulting to transit mode
+  async function fetchCommuteForPair(accommodation: Accommodation, place: ImportantPlace, mode: TravelMode = 'transit') {
+    const origin = accommodation.address ?? accommodation.title;
+    const destination = place.address ?? place.label;
+    if (!origin || !destination) return;
+
+    const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const cacheKey = getCacheKey(origin, destination, mode, mode === 'transit' ? (place.arriveBy ?? null) : null, null);
+    let cache = loadCommuteCache();
+    const entry = cache[cacheKey];
+    if (entry && Date.now() - entry.updatedAt < TTL_MS) {
+      const minutes = entry.minutes;
+
+      setRealCommute((prev) => ({
+        ...prev,
+        [accommodation.id]: {
+          ...(prev[accommodation.id] ?? {}),
+          [place.id]: { ...(prev[accommodation.id]?.[place.id] ?? {}), [mode]: minutes },
+        },
+      }));
+      return;
+    }
+
+    const params = new URLSearchParams({ origin, destination, mode });
+    if (mode === 'transit' && place.arriveBy) params.set('arriveBy', place.arriveBy);
+    const resp = await fetch(`/api/directions?${params.toString()}`);
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const minutes: number | null = json?.minutes ?? null;
+    if (minutes == null) return;
+
+    setRealCommute((prev) => ({
+      ...prev,
+      [accommodation.id]: {
+        ...(prev[accommodation.id] ?? {}),
+        [place.id]: { ...(prev[accommodation.id]?.[place.id] ?? {}), [mode]: minutes },
+      },
+    }));
+    cache = loadCommuteCache();
+    cache[cacheKey] = { minutes, updatedAt: Date.now() };
+    saveCommuteCache(cache);
+  }
+
+  async function prefetchForAccommodationOnAdd(accId: string, mode: TravelMode = 'transit') {
+    const a = (accommodations ?? []).find((x) => x.id === accId);
+    if (!a) return;
+    const ps = (places ?? []).filter((p) => p.id && (p.label || p.address));
+    const CONC = 2;
+    for (let i = 0; i < ps.length; i += CONC) {
+      await Promise.all(ps.slice(i, i + CONC).map((p) => fetchCommuteForPair(a, p, mode)));
+    }
+  }
+
+  async function prefetchForPlaceOnAdd(placeId: string, mode: TravelMode = 'transit') {
+    const p = (places ?? []).find((x) => x.id === placeId);
+    if (!p) return;
+    const accs = (accommodations ?? []).filter((a) => a.address || a.title);
+    const CONC = 2;
+    for (let i = 0; i < accs.length; i += CONC) {
+      await Promise.all(accs.slice(i, i + CONC).map((a) => fetchCommuteForPair(a, p, mode)));
+    }
+  }
 
 
   function commuteForMode(accommodationId: string, mode: TravelMode): Record<string, number> {
@@ -526,8 +716,9 @@ export function useAccommodations() {
     function commit(updater: (prev: Accommodation[]) => Accommodation[]) {
       setAccommodations((prev) => {
         const base = prev ?? [];
-        const next = updater(base).map(ensureMockCompleteness).map((a) => computeDerived(a, finance));
-        saveToStorage(next);
+        const filled = updater(base).map((a) => (DATA_SOURCE === 'local' ? ensureMockCompleteness(a) : ensureMinimalDefaultsConvex(a)));
+        const next = filled.map((a) => computeDerived(a, finance));
+        if (DATA_SOURCE === 'local') saveToStorage(next);
         return next;
       });
     }
@@ -535,6 +726,12 @@ export function useAccommodations() {
     function add(accommodation: Omit<Accommodation, "id"> & Partial<Pick<Accommodation, "id">>) {
       const id = accommodation.id ?? generateId();
       commit((prev) => [{ ...accommodation, id }, ...prev]);
+      // Also create on Convex to trigger server-side scheduling
+      try { void addAccommodationConv({ clientId: id, kind: (accommodation.kind ?? 'candidate') as any, title: accommodation.title, address: accommodation.address }); } catch { /* noop */ }
+      // Fetch commute times only on client if source=client; otherwise Convex handles it server-side
+      if (COMMUTE_SOURCE === 'client') {
+        prefetchForAccommodationOnAdd(id, 'transit');
+      }
     }
 
     function addMock() {
@@ -577,15 +774,52 @@ export function useAccommodations() {
         },
       };
       commit((prev) => [newItem, ...prev]);
+      // Also create on Convex to trigger server-side scheduling
+      try { void addAccommodationConv({ clientId: id, kind: 'candidate', title: newItem.title, address: newItem.address }); } catch { /* noop */ }
+      // Prefetch on client only when using client source
+      if (COMMUTE_SOURCE === 'client') {
+        prefetchForAccommodationOnAdd(id, 'transit');
+      }
       return newItem;
     }
 
     function remove(id: string) {
       commit((prev) => prev.filter((a) => a.id !== id));
+      // Best-effort: also remove on Convex so commute data is cleaned up
+      try {
+        const serverId = (convexAccs as any[] | undefined)?.find((a: any) => a.clientId === id)?._id;
+        if (serverId) void removeAccommodationConv({ id: serverId });
+      } catch {}
     }
 
     function update(id: string, patch: Partial<Accommodation>) {
+      // Update local state first
       commit((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+
+      // Best-effort: propagate edited fields to Convex when in Convex mode (so hydration won’t overwrite)
+      const payload: any = {};
+      const has = (k: keyof Accommodation) => Object.prototype.hasOwnProperty.call(patch, k);
+      if (has('title')) payload.title = patch.title;
+      if (has('address')) payload.address = patch.address;
+      if (has('hyra')) payload.hyra = patch.hyra as any;
+      if (has('driftkostnader')) payload.driftkostnader = patch.driftkostnader as any;
+      if (has('antalRum')) payload.antalRum = patch.antalRum as any;
+      if (has('boarea')) payload.boarea = patch.boarea as any;
+      if (has('biarea')) payload.biarea = patch.biarea as any;
+      if (has('tomtarea')) payload.tomtarea = patch.tomtarea as any;
+      if (has('constructionYear')) payload.constructionYear = patch.constructionYear as any;
+      if (has('begartPris')) payload.begartPris = patch.begartPris as any;
+      if (has('currentValuation')) payload.currentValuation = patch.currentValuation as any;
+      // meta.energyClass (stored under meta on server)
+      const energyClass = (patch as any)?.metrics?.meta?.energyClass;
+      if (energyClass != null) payload.meta = { energyClass } as any;
+
+      if (Object.keys(payload).length > 0) {
+        try {
+          const serverId = (convexAccs as any[] | undefined)?.find((a: any) => a.clientId === id)?._id;
+          if (serverId) void updateAccommodationConv({ id: serverId, patch: payload });
+        } catch {}
+      }
     }
 
     function clear() {
@@ -593,24 +827,56 @@ export function useAccommodations() {
     }
 
     function replacePlaces(next: Array<Partial<ImportantPlace>>) {
-      const finalized: ImportantPlace[] = (next ?? []).map((p) => ({
-        id: p.id ?? generateId(),
-        label: p.label,
-        address: p.address,
-        icon: p.icon,
-        arriveBy: p.arriveBy,
-        leaveAt: p.leaveAt,
-      }));
+      const prevIds = new Set((places ?? []).map((p) => p.id).filter(Boolean) as string[]);
+      const used = new Set<string>();
+      function genUniqueId() {
+        let id = generateId();
+        while (used.has(id) || prevIds.has(id)) id = generateId();
+        used.add(id);
+        return id;
+      }
+      const finalized: ImportantPlace[] = [];
+      for (const p of (next ?? [])) {
+        let id = p.id as string | undefined;
+        if (!id || used.has(id)) {
+          id = genUniqueId();
+        } else {
+          used.add(id);
+        }
+        finalized.push({
+          id,
+          label: p.label,
+          address: p.address,
+          icon: p.icon,
+          arriveBy: p.arriveBy,
+          leaveAt: p.leaveAt,
+        });
+      }
       setPlaces(finalized);
-      savePlacesToStorage(finalized);
+      if (DATA_SOURCE === 'local') {
+        savePlacesToStorage(finalized);
+      } else {
+        try {
+          void bulkReplacePlaces({ places: finalized.map((p) => ({ clientId: p.id!, label: p.label, address: p.address, icon: p.icon, arriveBy: p.arriveBy, leaveAt: p.leaveAt })) });
+        } catch {}
+      }
+      // Prefetch only for newly added places (client-side mock)
+      for (const p of finalized) {
+        if (p.id && !prevIds.has(p.id)) {
+          if (COMMUTE_SOURCE === 'client') {
+            prefetchForPlaceOnAdd(p.id, 'transit');
+          }
+        }
+      }
     }
 
     // Create or update current accommodation from user-provided input (non-destructive)
     function upsertCurrentFromUser(input: CurrentHomeInput) {
       commit((prev) => {
         const existingIdx = prev.findIndex((a) => a.kind === "current");
+        const chosenId = existingIdx >= 0 ? prev[existingIdx].id : generateId();
         const base: Accommodation = existingIdx >= 0 ? prev[existingIdx] : {
-          id: generateId(),
+          id: chosenId,
           kind: "current",
           title: "Nuvarande hem",
           address: undefined,
@@ -626,6 +892,7 @@ export function useAccommodations() {
 
         const updated: Accommodation = {
           ...base,
+          id: chosenId,
           kind: "current",
           title: input.title ?? base.title,
           address: input.address ?? base.address,
@@ -638,6 +905,26 @@ export function useAccommodations() {
           currentValuation: input.currentValuation ?? base.currentValuation,
           metrics: nextMetrics,
         };
+
+        // Persist to Convex when enabled
+        if (DATA_SOURCE === 'convex') {
+          try {
+            const loans = (input.mortgages?.loans ?? []).map((l) => ({ principal: num(l.principal) ?? 0, interestRateAnnual: num(l.interestRateAnnual) ?? 0 }));
+            void upsertCurrentConv({
+              clientId: chosenId,
+              title: updated.title,
+              address: updated.address,
+              hyra: updated.hyra as any,
+              driftkostnader: updated.driftkostnader as any,
+              antalRum: updated.antalRum as any,
+              boarea: updated.boarea as any,
+              biarea: updated.biarea as any,
+              tomtarea: updated.tomtarea as any,
+              currentValuation: updated.currentValuation as any,
+              loans: loans.length ? loans : undefined,
+            } as any);
+          } catch {}
+        }
 
         if (existingIdx >= 0) {
           const arr = [...prev];
@@ -700,19 +987,19 @@ export function useAccommodations() {
         kind: "candidate",
         title,
         address: pd.address ?? undefined,
-        postort: pd.postort ?? undefined,
-        kommun: pd.kommun ?? undefined,
+        postort: (pd as any)?.postort ?? undefined,
+        kommun: (pd as any)?.kommun ?? undefined,
         position: { xPercent: Math.round(randomBetween(15, 85)), yPercent: Math.round(randomBetween(15, 80)) },
         color: randomFrom(COLOR_CLASSES),
         imageUrl: pd.imageUrl ?? placeholderImageUrl(id),
-        begartPris: pd.price ?? undefined,
-        driftkostnader: pd.operatingCost ?? undefined,
-        hyra: pd.monthlyFee ?? undefined,
-        antalRum: pd.rooms ?? undefined,
-        boarea: pd.livingArea ?? undefined,
-        biarea: (pd as any)?.supplementalArea ?? undefined,
-        tomtarea: (pd as any)?.landArea ?? undefined,
-        constructionYear: pd.constructionYear ?? undefined,
+        begartPris: num(pd.price),
+        driftkostnader: num((pd as any)?.operatingCost ?? (pd as any)?.driftkostnad ?? (pd as any)?.driftskostnad),
+        hyra: num(pd.monthlyFee ?? (pd as any)?.avgift),
+        antalRum: num(pd.rooms),
+        boarea: num(pd.livingArea),
+        biarea: num((pd as any)?.supplementalArea),
+        tomtarea: num((pd as any)?.landArea),
+        constructionYear: num(pd.constructionYear),
         metrics: {
           ...(sourceUrl ? { sourceUrl } : {}),
           ...((pd as any)?.hemnetUrl || (pd as any)?.realtorUrl
@@ -725,7 +1012,7 @@ export function useAccommodations() {
             ? { media: { images: (pd as any)?.images ?? [], floorPlans: (pd as any)?.floorPlans ?? [] } }
             : {}),
           ...((pd as any)?.daysOnHemnet != null || (pd as any)?.timesViewed != null || (pd as any)?.labels
-            ? { hemnetStats: { daysOnHemnet: (pd as any)?.daysOnHemnet ?? null, timesViewed: (pd as any)?.timesViewed ?? null, labels: (pd as any)?.labels ?? [] } }
+            ? { hemnetStats: { daysOnHemnet: num((pd as any)?.daysOnHemnet) as any, timesViewed: num((pd as any)?.timesViewed) as any, labels: (pd as any)?.labels ?? [] } }
             : {}),
           ...((pd as any)?.openHouses
             ? { openHouses: (pd as any)?.openHouses }
@@ -733,18 +1020,58 @@ export function useAccommodations() {
         },
       };
       commit((prev) => [item, ...prev]);
+      // Also create on Convex to persist scraped fields & trigger server-side scheduling
+      try {
+        void addAccommodationConv({
+          clientId: id,
+          kind: 'candidate' as any,
+          title,
+          address: pd.address ?? undefined,
+          postort: (pd as any)?.postort ?? undefined,
+          kommun: (pd as any)?.kommun ?? undefined,
+          imageUrl: pd.imageUrl ?? undefined,
+          begartPris: num(pd.price),
+          driftkostnader: num((pd as any)?.operatingCost ?? (pd as any)?.driftkostnad ?? (pd as any)?.driftskostnad),
+          hyra: num(pd.monthlyFee ?? (pd as any)?.avgift),
+          antalRum: num(pd.rooms),
+          boarea: num(pd.livingArea),
+          biarea: num((pd as any)?.supplementalArea),
+          tomtarea: num((pd as any)?.landArea),
+          constructionYear: num(pd.constructionYear),
+          meta: ((pd as any)?.type || (pd as any)?.tenure || (pd as any)?.energyClass)
+            ? { type: (pd as any)?.type ?? undefined, tenure: (pd as any)?.tenure ?? undefined, energyClass: (pd as any)?.energyClass ?? undefined }
+            : undefined,
+          sourceUrls: ((pd as any)?.hemnetUrl || (pd as any)?.realtorUrl)
+            ? { hemnet: (pd as any)?.hemnetUrl, realtor: (pd as any)?.realtorUrl }
+            : undefined,
+          media: ((pd as any)?.images || (pd as any)?.floorPlans)
+            ? { images: (pd as any)?.images ?? [], floorPlans: (pd as any)?.floorPlans ?? [] }
+            : undefined,
+          hemnetStats: ((pd as any)?.daysOnHemnet != null || (pd as any)?.timesViewed != null || (pd as any)?.labels)
+            ? { daysOnHemnet: num((pd as any)?.daysOnHemnet) as any, timesViewed: num((pd as any)?.timesViewed) as any, labels: (pd as any)?.labels ?? [] }
+            : undefined,
+        });
+      } catch { /* noop */ }
+      // Prefetch on client only when using client source
+      if (COMMUTE_SOURCE === 'client') {
+        prefetchForAccommodationOnAdd(id, 'transit');
+      }
       return item;
     }
 
     function updateFinanceSettings(patch: Partial<FinanceSettings>) {
       setFinance((prev) => {
         const next = { ...prev, ...patch } as FinanceSettings;
-        saveFinanceToStorage(next);
+        if (DATA_SOURCE === 'local') {
+          saveFinanceToStorage(next);
+        } else {
+          try { void upsertFinance(next as any); } catch {}
+        }
         // Recompute all accommodations with new finance settings
         setAccommodations((prevAcc) => {
           const base = prevAcc ?? [];
           const recalculated = base.map(ensureMockCompleteness).map((a) => computeDerived(a, next));
-          saveToStorage(recalculated);
+          if (DATA_SOURCE === 'local') saveToStorage(recalculated);
           return recalculated;
         });
         return next;

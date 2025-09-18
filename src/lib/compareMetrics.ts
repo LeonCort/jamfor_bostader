@@ -95,10 +95,15 @@ export const metrics: Record<MetricKey, Metric> = {
     breakdown: (a, ctx) => {
       const finance = ctx.finance ?? null;
       const hyra = Math.round(a.hyra ?? 0);
-      const drift = a.driftkostnader ? Math.round(a.driftkostnader / 12) : 0;
+      const driftIsEst = !!(a as any).driftkostnaderIsEstimated;
+      const drift = driftIsEst
+        ? Math.round((((a as any).driftkostnaderSchablon ?? 0) as number) / 12)
+        : a.driftkostnader
+        ? Math.round(a.driftkostnader / 12)
+        : 0;
       const ranta = Math.round(a.rantaPerManad ?? 0);
       const amort = Math.round(a.amorteringPerManad ?? 0);
-      const note = a.maintenanceUnknown ? "uppskattad 0 kr (okänt)" : undefined;
+      const note = driftIsEst ? "Schablonvärde enligt modell" : (a.maintenanceUnknown ? "uppskattad 0 kr (okänt)" : undefined);
       // +1% skuldkvotstillägg badge if lan/income ratio > 4.5
       const incomes = ((finance?.incomeMonthlyPerson1 ?? 0) + (finance?.incomeMonthlyPerson2 ?? 0)) * 12;
       const lan = (a as any).lan as number | undefined;
@@ -156,8 +161,14 @@ export const metrics: Record<MetricKey, Metric> = {
     label: "Driftkostnad",
     unit: "kr/mån",
     goodWhenHigher: false,
-    valueOf: (a) => monthlyDrift(a.driftkostnader),
-    valuesAcross: (cols) => cols.map((c) => ({ id: c.id, title: c.title, value: monthlyDrift(c.driftkostnader) })),
+    valueOf: (a) => {
+      const isEst = !!(a as any).driftkostnaderIsEstimated;
+      return isEst ? monthlyDrift((a as any).driftkostnaderSchablon) : monthlyDrift(a.driftkostnader);
+    },
+    valuesAcross: (cols) => cols.map((c) => {
+      const isEst = !!(c as any).driftkostnaderIsEstimated;
+      return { id: c.id, title: c.title, value: isEst ? monthlyDrift((c as any).driftkostnaderSchablon) : monthlyDrift(c.driftkostnader) };
+    }),
   },
   amorteringPerManad: {
     key: "amorteringPerManad",

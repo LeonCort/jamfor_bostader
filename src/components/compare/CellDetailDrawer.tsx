@@ -23,13 +23,45 @@ function calculationBasis(ctx: CellContext, opts?: { downRate?: number; interest
   switch (key) {
     case "totalMonthlyCost": {
       const hyra = num((acc as any).hyra as number | undefined) ?? 0;
-      const driftAr = num((acc as any).driftkostnader as number | undefined) ?? 0;
+      const driftIsEst = !!(acc as any).driftkostnaderIsEstimated;
+      const driftArRaw = driftIsEst ? num((acc as any).driftkostnaderSchablon as number | undefined) : num((acc as any).driftkostnader as number | undefined);
+      const driftAr = driftArRaw ?? 0;
       const drift = driftAr > 0 ? Math.round(driftAr / 12) : 0;
       const ranta = num((acc as any).rantaPerManad as number | undefined) ?? 0;
       const amort = num((acc as any).amorteringPerManad as number | undefined) ?? 0;
       const sum = hyra + drift + ranta + amort;
       const example = `${fmtMon(hyra)} + ${fmtMon(drift)} + ${fmtMon(ranta)} + ${fmtMon(amort)} = ${fmtMon(sum)}`;
-      return `Summa av avgift/hyra + drift/12 + ränta + amortering.\nExempel: ${example}`;
+      let base = `Summa av avgift/hyra + drift/12 + ränta + amortering.\nExempel: ${example}`;
+      if (driftIsEst) {
+        const area = num((acc as any).boarea as number | undefined) ?? 0;
+        const y = num((acc as any).constructionYear as number | undefined);
+        const ecRaw = (((acc as any)?.metrics)?.meta?.energyClass ?? (acc as any)?.meta?.energyClass) as string | undefined;
+        const E = typeof ecRaw === 'string' ? ecRaw.trim().toUpperCase() : undefined;
+        const baseCost = 30000;
+        const areaCost = area * 150;
+        const preAdj = baseCost + areaCost;
+        let yearAdjPct = 0; // +10, +5, 0
+        if (typeof y === 'number') {
+          if (y <= 1979) yearAdjPct = 10; else if (y <= 1999) yearAdjPct = 5; else yearAdjPct = 0;
+        }
+        let energyAdjPct = 0; // -10, 0, +5, +10
+        if (E === 'A' || E === 'B') energyAdjPct = -10;
+        else if (E === 'E' || E === 'F') energyAdjPct = 5;
+        else if (E === 'G') energyAdjPct = 10;
+        const factor = (100 + yearAdjPct) / 100 * (100 + energyAdjPct) / 100;
+        const estAnnual = Math.round(preAdj * factor);
+        const lines = [
+          `\n\nSchablon (drift/år):`,
+          `• Bas: ${baseCost.toLocaleString('sv-SE')} kr`,
+          `• Area: ${area.toLocaleString('sv-SE')} m² × 150 kr = ${(areaCost).toLocaleString('sv-SE')} kr`,
+          `• Delsumma: ${preAdj.toLocaleString('sv-SE')} kr`,
+          `• Byggår${y ? ` ${y}` : ''}: ${yearAdjPct > 0 ? `+${yearAdjPct}%` : '0%'}`,
+          `• Energiklass${E ? ` ${E}` : ''}: ${energyAdjPct > 0 ? `+${energyAdjPct}%` : energyAdjPct < 0 ? `${energyAdjPct}%` : '0%'}`,
+          `• Resultat: ${estAnnual.toLocaleString('sv-SE')} kr/år (${Math.round(estAnnual/12).toLocaleString('sv-SE')} kr/mån)`
+        ];
+        base = base + "\n" + lines.join("\n");
+      }
+      return base;
     }
     case "utropspris": {
       const val = acc.kind === "current" ? (acc as any).currentValuation as number | undefined : (acc as any).begartPris as number | undefined;
@@ -93,6 +125,34 @@ function calculationBasis(ctx: CellContext, opts?: { downRate?: number; interest
       const example = lan ? `${lan.toLocaleString("sv-SE")} kr × ${ratePct}% / 12 ≈ ${(Math.round((lan * (opts?.interestRateAnnual ?? 0.03)) / 12)).toLocaleString("sv-SE")} kr/mån` : undefined;
       return `Räntekostnad per månad. Formel: lånebelopp × räntesats / 12.\nRäntesats: ${ratePct}% (inställning).${example ? `\nExempel: ${example}.` : ""}`;
     }
+    case "driftkostnaderMonthly": {
+      const driftIsEst = !!(acc as any).driftkostnaderIsEstimated;
+      if (driftIsEst) {
+        const area = num((acc as any).boarea as number | undefined) ?? 0;
+        const y = num((acc as any).constructionYear as number | undefined);
+        const ecRaw = (((acc as any)?.metrics)?.meta?.energyClass ?? (acc as any)?.meta?.energyClass) as string | undefined;
+        const E = typeof ecRaw === 'string' ? ecRaw.trim().toUpperCase() : undefined;
+        const baseCost = 30000;
+        const areaCost = area * 150;
+        const preAdj = baseCost + areaCost;
+        let yearAdjPct = 0;
+        if (typeof y === 'number') { if (y <= 1979) yearAdjPct = 10; else if (y <= 1999) yearAdjPct = 5; }
+        let energyAdjPct = 0;
+        if (E === 'A' || E === 'B') energyAdjPct = -10; else if (E === 'E' || E === 'F') energyAdjPct = 5; else if (E === 'G') energyAdjPct = 10;
+        const factor = (100 + yearAdjPct) / 100 * (100 + energyAdjPct) / 100;
+        const estAnnual = Math.round(preAdj * factor);
+        const estMonthly = Math.round(estAnnual / 12);
+        return `Schablonberäkning av drift: 30 000 kr + 150 kr/m² × boarea, med justering för byggår och energiklass.\nResultat: ${estAnnual.toLocaleString('sv-SE')} kr/år (${estMonthly.toLocaleString('sv-SE')} kr/mån).`;
+      } else {
+        const driftAr = (acc as any).driftkostnader as number | undefined;
+        if (driftAr != null && driftAr > 0) {
+          const m = Math.round(driftAr / 12);
+          return `Angiven driftkostnad delad på 12.\nExempel: ${driftAr.toLocaleString('sv-SE')} kr/år → ${m.toLocaleString('sv-SE')} kr/mån.`;
+        }
+        return `Driftkostnad saknas. I jämförelsen visas 0 kr/mån.`;
+      }
+    }
+
     default:
       return "Direktvärde från objektet eller beräknat enligt underlag.";
   }
@@ -139,6 +199,9 @@ export default function CellDetailDrawer({
         <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[86vh] rounded-t-2xl border border-border bg-card text-foreground shadow-2xl md:left-auto md:right-0 md:top-0 md:bottom-0 md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+
+	        <Drawer.Title className="sr-only">{ctx?.label ?? "Detaljer"}</Drawer.Title>
+
           <div className="mx-auto max-w-screen-md flex h-full flex-col">
             {!isMd && <Drawer.Handle className="mx-auto mt-2 mb-3 h-1.5 w-10 rounded-full bg-border" />}
 

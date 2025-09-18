@@ -8,6 +8,8 @@ import { useAccommodations } from "@/lib/accommodations";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/formatted-input";
+
 import { Drawer } from "vaul";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
@@ -57,6 +59,13 @@ function formatSek(n?: number) {
   return n.toLocaleString("sv-SE", { maximumFractionDigits: 0 }) + " kr";
 }
 
+function parseSwedishNumber(input?: string): number | undefined {
+  if (!input) return undefined;
+  const s = String(input).trim().replace(/\s/g, "").replace(/\./g, "").replace(/,/g, ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function LucideIcon({ name, className }: { name?: string; className?: string }) {
   const Cmp = (name ? (Icons as any)[name] : null) || Icons.MapPin;
   return <Cmp className={className} />;
@@ -92,6 +101,35 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
     }
     return price != null ? Math.round(price * 0.15) : undefined;
   }, [item.kind, item.currentValuation, item.lan, listingPrice]);
+
+  // Full edit state for KPIs
+  const [editBegartPris, setEditBegartPris] = React.useState(item.begartPris != null ? item.begartPris.toLocaleString('sv-SE') : "");
+  const [editCurrentValuation, setEditCurrentValuation] = React.useState(item.currentValuation != null ? item.currentValuation.toLocaleString('sv-SE') : "");
+  const [editHyra, setEditHyra] = React.useState(item.hyra != null ? item.hyra.toLocaleString('sv-SE') : "");
+  const [editDriftkostnader, setEditDriftkostnader] = React.useState(item.driftkostnader != null ? item.driftkostnader.toLocaleString('sv-SE') : "");
+  const [editAntalRum, setEditAntalRum] = React.useState(item.antalRum != null ? String(item.antalRum) : "");
+  const [editBoarea, setEditBoarea] = React.useState(item.boarea != null ? String(item.boarea) : "");
+  const [editBiarea, setEditBiarea] = React.useState(item.biarea != null ? String(item.biarea) : "");
+  const [editTomtarea, setEditTomtarea] = React.useState(item.tomtarea != null ? String(item.tomtarea) : "");
+  const [editConstructionYear, setEditConstructionYear] = React.useState(item.constructionYear != null ? String(item.constructionYear) : "");
+  const [editEnergyClass, setEditEnergyClass] = React.useState(String((((item as any)?.metrics?.meta) as any)?.energyClass ?? ""));
+
+  const startEdit = React.useCallback(() => {
+    setEditTitle(item.title);
+    setEditAddress(item.address ?? "");
+    setEditBegartPris(item.begartPris != null ? item.begartPris.toLocaleString('sv-SE') : "");
+    setEditCurrentValuation(item.currentValuation != null ? item.currentValuation.toLocaleString('sv-SE') : "");
+    setEditHyra(item.hyra != null ? item.hyra.toLocaleString('sv-SE') : "");
+    setEditDriftkostnader(item.driftkostnader != null ? item.driftkostnader.toLocaleString('sv-SE') : "");
+    setEditAntalRum(item.antalRum != null ? String(item.antalRum) : "");
+    setEditBoarea(item.boarea != null ? String(item.boarea) : "");
+    setEditBiarea(item.biarea != null ? String(item.biarea) : "");
+    setEditTomtarea(item.tomtarea != null ? String(item.tomtarea) : "");
+    setEditConstructionYear(item.constructionYear != null ? String(item.constructionYear) : "");
+    setEditEnergyClass(String((((item as any)?.metrics?.meta) as any)?.energyClass ?? ""));
+    setEditOpen(true);
+  }, [item]);
+
   const commuteMode = config?.commuteMode ?? 'transit';
   const singleTimes = commuteForMode(item.id, commuteMode);
   const listedPlaces = React.useMemo(() => (places || []).filter(p => p.label || p.address), [places]);
@@ -194,35 +232,31 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
               </div>
               <div className="shrink-0 flex items-center gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setDetailsOpen(true)}>Visa detaljer</Button>
-
                 {(() => {
                   const src = (item.metrics as any)?.sourceUrls ?? {};
                   const hemnet: string | undefined = src?.hemnet ?? undefined;
                   const realtor: string | undefined = src?.realtor ?? undefined;
                   return (
-                    <>
+                    <div className="hidden sm:flex items-center gap-2">
                       {hemnet && (
-                        <a href={hemnet} target="_blank" rel="noopener noreferrer" className="text-xs underline decoration-dotted hover:decoration-solid text-primary">
-                          Hemnet
-                        </a>
+                        <Button asChild variant="ghost" size="sm" className="gap-1.5">
+                          <a href={hemnet} target="_blank" rel="noopener noreferrer">
+                            <Icons.ExternalLink className="h-3.5 w-3.5" /> Hemnet
+                          </a>
+                        </Button>
                       )}
                       {realtor && (
-                        <a href={realtor} target="_blank" rel="noopener noreferrer" className="text-xs underline decoration-dotted hover:decoration-solid text-primary">
-                          Mäklare
-                        </a>
+                        <Button asChild variant="ghost" size="sm" className="gap-1.5">
+                          <a href={realtor} target="_blank" rel="noopener noreferrer">
+                            <Icons.ExternalLink className="h-3.5 w-3.5" /> Mäklare
+                          </a>
+                        </Button>
                       )}
-                    </>
+                    </div>
                   );
                 })()}
               </div>
-              <div className="shrink-0 -mt-1 -me-1 flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Redigera" onClick={() => setEditOpen(true)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" aria-label="Ta bort" onClick={() => setConfirmOpen(true)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+
             </div>
 
             {/* Anpassningsbara chips */}
@@ -303,17 +337,92 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setEditOpen(false)}>Stäng</Button>
                   </div>
-                  <div className="mt-4 space-y-3">
-                    <div>
-                      <div className="text-sm font-medium mb-1">Titel</div>
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="space-y-1 sm:col-span-2">
+                      <div className="text-xs text-muted-foreground">Titel</div>
                       <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
                     </div>
-                    <div>
-                      <div className="text-sm font-medium mb-1">Adress</div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <div className="text-xs text-muted-foreground">Adress</div>
                       <Input value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
                     </div>
-                    <div className="pt-2 flex justify-end">
-                      <Button onClick={() => { update(item.id, { title: editTitle, address: editAddress }); setEditOpen(false); }}>Spara</Button>
+
+                    {item.kind !== 'current' && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Begärt pris</div>
+                        <CurrencyInput value={editBegartPris} onValueChange={({ formattedValue }) => setEditBegartPris(formattedValue)} decimalScale={0} />
+                      </div>
+                    )}
+                    {item.kind === 'current' && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Marknadsvärde</div>
+                        <CurrencyInput value={editCurrentValuation} onValueChange={({ formattedValue }) => setEditCurrentValuation(formattedValue)} decimalScale={0} />
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Hyra / mån</div>
+                      <CurrencyInput value={editHyra} onValueChange={({ formattedValue }) => setEditHyra(formattedValue)} decimalScale={0} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Drift / år</div>
+                      <CurrencyInput value={editDriftkostnader} onValueChange={({ formattedValue }) => setEditDriftkostnader(formattedValue)} decimalScale={0} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Antal rum</div>
+                      <Input inputMode="numeric" value={editAntalRum} onChange={(e) => setEditAntalRum(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Boarea (m²)</div>
+                      <Input inputMode="numeric" value={editBoarea} onChange={(e) => setEditBoarea(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Biarea (m²)</div>
+                      <Input inputMode="numeric" value={editBiarea} onChange={(e) => setEditBiarea(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Tomtarea (m²)</div>
+                      <Input inputMode="numeric" value={editTomtarea} onChange={(e) => setEditTomtarea(e.target.value)} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Byggår</div>
+                      <Input inputMode="numeric" value={editConstructionYear} onChange={(e) => setEditConstructionYear(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Energiklass</div>
+                      <Input value={editEnergyClass} onChange={(e) => setEditEnergyClass(e.target.value)} placeholder="t.ex. C" />
+                    </div>
+
+                    <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
+                      <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>Avbryt</Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const patch: any = {
+                            title: editTitle,
+                            address: editAddress || undefined,
+                            driftkostnader: parseSwedishNumber(editDriftkostnader),
+                            hyra: parseSwedishNumber(editHyra),
+                            antalRum: editAntalRum ? Number(editAntalRum) : undefined,
+                            boarea: editBoarea ? Number(editBoarea) : undefined,
+                            biarea: editBiarea ? Number(editBiarea) : undefined,
+                            tomtarea: editTomtarea ? Number(editTomtarea) : undefined,
+                            constructionYear: editConstructionYear ? Number(editConstructionYear) : undefined,
+                          };
+                          if (item.kind !== 'current') {
+                            patch.begartPris = parseSwedishNumber(editBegartPris);
+                          } else {
+                            patch.currentValuation = parseSwedishNumber(editCurrentValuation);
+                          }
+                          patch.metrics = { ...(item as any).metrics, meta: { ...(((item as any)?.metrics as any)?.meta ?? {}), energyClass: editEnergyClass || undefined } };
+                          update(item.id, patch);
+                          setEditOpen(false);
+                        }}
+                      >
+                        Spara
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -336,9 +445,17 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                       <div className="font-semibold leading-tight">{item.title}</div>
                       <div className="mt-1 text-xs text-muted-foreground">{item.address}</div>
                     </div>
-                    <Button variant="ghost" size="icon" aria-label="Stäng" onClick={() => setDetailsOpen(false)}>
-                      <X className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button variant="ghost" size="icon" aria-label="Redigera" onClick={startEdit}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Ta bort" onClick={() => setConfirmOpen(true)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" aria-label="Stäng" onClick={() => setDetailsOpen(false)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Tabs */}

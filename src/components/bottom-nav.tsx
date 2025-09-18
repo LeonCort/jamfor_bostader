@@ -13,6 +13,8 @@ export function BottomNav() {
     ? "compare"
     : pathname.startsWith("/map")
     ? "map"
+    : pathname.startsWith("/overview")
+    ? "overview"
     : "overview";
 
   const items: Array<{
@@ -21,7 +23,7 @@ export function BottomNav() {
     label: string;
     icon: React.ReactNode;
   }> = [
-    { key: "overview", href: "/", label: "Översikt", icon: <Home size={22} /> },
+    { key: "overview", href: "/overview", label: "Översikt", icon: <Home size={22} /> },
     { key: "map", href: "/map", label: "Karta", icon: <Map size={22} /> },
     { key: "compare", href: "/compare", label: "Jämför", icon: <Scale size={22} /> },
     { key: "settings", href: "/settings", label: "Inställningar", icon: <Settings size={22} /> },

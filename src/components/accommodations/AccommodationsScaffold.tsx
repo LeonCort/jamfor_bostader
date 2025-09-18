@@ -44,7 +44,7 @@ function formatSek(n?: number) {
 
 
 export function AccommodationsScaffold({ mapsApiKey }: { mapsApiKey?: string }) {
-  const { accommodations, current, places, commuteFor, remove, update } = useAccommodations();
+  const { accommodations, current, places, commuteFor, remove, update, addOrUpdateCurrentMock, upsertCurrentFromUser } = useAccommodations();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);

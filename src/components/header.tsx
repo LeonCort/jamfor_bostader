@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTab } from "@/components/animate-ui/components/base/tabs";
 import { ModeToggle } from "@/components/darkmode-toggle";
+import { SignedIn, SignedOut, UserButton, SignInButton } from "@clerk/nextjs";
 
 export function Header() {
   const pathname = usePathname();
@@ -15,13 +16,15 @@ export function Header() {
     ? "compare"
     : pathname.startsWith("/map")
     ? "map"
+    : pathname.startsWith("/overview")
+    ? "overview"
     : "overview";
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="relative mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4 sm:px-6">
         {/* Left: brand */}
-        <Link href="/" className="font-semibold tracking-tight">
+        <Link href="/overview" className="font-semibold tracking-tight">
           Jämför bostäder
         </Link>
 
@@ -32,7 +35,7 @@ export function Header() {
               value={current}
               onValueChange={(v) => {
                 if (v === current) return;
-                const href = v === "overview" ? "/" : v === "map" ? "/map" : v === "compare" ? "/compare" : "/settings";
+                const href = v === "overview" ? "/overview" : v === "map" ? "/map" : v === "compare" ? "/compare" : "/settings";
                 router.push(href);
               }}
             >
@@ -48,8 +51,18 @@ export function Header() {
           </div>
         </div>
 
-        {/* Right: theme toggle */}
-        <ModeToggle />
+        {/* Right: theme + account */}
+        <div className="flex items-center gap-2">
+          <ModeToggle />
+          <SignedIn>
+            <UserButton appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }} />
+          </SignedIn>
+          <SignedOut>
+            <SignInButton mode="modal">
+              <span className="text-sm font-medium px-2 py-1 rounded-md hover:bg-muted cursor-pointer">Logga in</span>
+            </SignInButton>
+          </SignedOut>
+        </div>
       </div>
     </header>
   );

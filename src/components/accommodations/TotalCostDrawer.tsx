@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Drawer } from "vaul";
-import { X, Calculator, Info, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Home } from "lucide-react";
+import { X, Calculator, Info, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Home, Asterisk } from "lucide-react";
 import type { Accommodation } from "@/lib/accommodations";
 import { useAccommodations } from "@/lib/accommodations";
 
@@ -23,14 +23,16 @@ export default function TotalCostDrawer({
   const title = item.title || "Bostad";
   const total = item.totalMonthlyCost ?? undefined;
   const hyra = item.hyra ?? 0;
-  const driftPerManad = item.driftkostnader ? Math.round(item.driftkostnader / 12) : 0;
+  const driftIsEst = !!item.driftkostnaderIsEstimated;
+  const driftAnnual = driftIsEst ? (item.driftkostnaderSchablon ?? 0) : (item.driftkostnader ?? 0);
+  const driftPerManad = Math.round(driftAnnual / 12);
   const amort = item.amorteringPerManad ?? 0;
   const ranta = item.rantaPerManad ?? 0;
   const maintenanceUnknown = item.maintenanceUnknown;
 
   const rows: Array<{ label: string; value: number; note?: string }> = [
     { label: "Avgift / hyra", value: hyra },
-    { label: "Drift (per månad)", value: driftPerManad, note: maintenanceUnknown ? "uppskattad 0 kr (okänt)" : undefined },
+    { label: "Drift (per månad)", value: driftPerManad, note: driftIsEst ? "Schablonvärde enligt modell" : (maintenanceUnknown ? "uppskattad 0 kr (okänt)" : undefined) },
     { label: "Ränta", value: ranta },
     { label: "Amortering", value: amort },
   ];
@@ -56,6 +58,9 @@ export default function TotalCostDrawer({
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[86vh] rounded-t-2xl border border-border bg-card text-foreground shadow-2xl md:left-auto md:right-0 md:top-0 md:bottom-0 md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+
+	        <Drawer.Title className="sr-only">Månadskostnad</Drawer.Title>
+
           <div className="mx-auto max-w-screen-md flex h-full flex-col">
             {!isMd && <Drawer.Handle className="mx-auto mt-2 mb-3 h-1.5 w-10 rounded-full bg-border" />}
 
@@ -73,7 +78,10 @@ export default function TotalCostDrawer({
               <div className="px-4 py-5 space-y-6">
                 {/* Main total */}
                 <div className="rounded-xl border bg-muted/40 p-6 text-center">
-                  <div className="text-3xl font-bold mb-1">{total != null ? total.toLocaleString("sv-SE") : "—"}</div>
+                  <div className="text-3xl font-bold mb-1 inline-flex items-center gap-1">
+                    {total != null ? total.toLocaleString("sv-SE") : "—"}
+                    {driftIsEst ? (<span title="Totalt inkluderar schablonv\u00e4rde f\u00f6r drift"><Asterisk className="h-4 w-4 text-muted-foreground" /></span>) : null}
+                  </div>
                   <div className="text-sm text-muted-foreground">kr/mån</div>
                 </div>
 
@@ -81,11 +89,46 @@ export default function TotalCostDrawer({
                 <div>
                   <div className="flex items-center gap-2 text-sm font-semibold mb-3">
                     <Info className="h-4 w-4" />
+                      {driftIsEst && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <Asterisk className="h-3 w-3" />
+                            Totalt inkluderar schablonvärde för drift (12-delad).
+                          </span>
+                        </div>
+                      )}
+
                     <span>Beräkningsgrund</span>
                   </div>
                   <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
                     Denna beräkning inkluderar avgift/hyra, drift (12-delad), ränta och amortering. Värden är uppskattningar för jämförelse och kan avvika.
                   </div>
+
+                  {driftIsEst && (() => {
+                    const area = typeof (item as any).boarea === 'number' ? (item as any).boarea as number : 0;
+                    const y = typeof (item as any).constructionYear === 'number' ? (item as any).constructionYear as number : undefined;
+                    const ecRaw = (((item as any)?.metrics)?.meta?.energyClass ?? (item as any)?.meta?.energyClass) as string | undefined;
+                    const E = typeof ecRaw === 'string' ? ecRaw.trim().toUpperCase() : undefined;
+                    const baseCost = 30000;
+                    const areaCost = area * 150;
+                    const preAdj = baseCost + areaCost;
+                    const yearAdjPct = typeof y === 'number' ? (y <= 1979 ? 10 : y <= 1999 ? 5 : 0) : 0;
+                    const energyAdjPct = E === 'A' || E === 'B' ? -10 : E === 'E' || E === 'F' ? 5 : E === 'G' ? 10 : 0;
+                    return (
+                      <div className="mt-3 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                        <div className="font-medium text-foreground mb-1">Schablon för drift (per år)</div>
+                        <ul className="list-disc pl-5 space-y-0.5">
+                          <li>Bas: {baseCost.toLocaleString("sv-SE")} kr</li>
+                          <li>Area: {area.toLocaleString("sv-SE")} m² × 150 kr = {(areaCost).toLocaleString("sv-SE")} kr</li>
+                          <li>Delsumma: {preAdj.toLocaleString("sv-SE")} kr</li>
+                          <li>Byggår{y ? ` ${y}` : ''}: {yearAdjPct > 0 ? `+${yearAdjPct}%` : '0%'}</li>
+                          <li>Energiklass{E ? ` ${E}` : ''}: {energyAdjPct > 0 ? `+${energyAdjPct}%` : energyAdjPct < 0 ? `${energyAdjPct}%` : '0%'}</li>
+                          <li>Resultat: {driftAnnual.toLocaleString("sv-SE")} kr/år ({driftPerManad.toLocaleString("sv-SE")} kr/mån)</li>
+                        </ul>
+                      </div>
+                    );
+                  })()}
+
                 </div>
 
                 {/* Breakdown */}
