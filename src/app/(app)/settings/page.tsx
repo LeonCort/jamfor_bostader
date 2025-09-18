@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Drawer } from "vaul";
 import { useMutation } from "convex/react";
@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { CurrencyInput, PercentInput } from "@/components/ui/formatted-input";
-import { SignedIn, SignedOut, UserButton, SignInButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton, useClerk, useUser } from "@clerk/nextjs";
 import { useToast } from "@/components/ui/toast";
+import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
 import { Plus } from "lucide-react";
 
 const nfSE2 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -26,6 +27,12 @@ function parseSwedishNumber(input?: string | null): number | undefined {
 
 export default function SettingsPage() {
   const { current, places, finance, upsertCurrentFromUser, replacePlaces, updateFinanceSettings } = useAccommodations();
+
+  // Clerk helpers for account actions
+  const { openSignIn } = useClerk();
+  const { isSignedIn } = useUser();
+  const themeToggleRef = useRef<HTMLDivElement | null>(null);
+  const userButtonRef = useRef<HTMLDivElement | null>(null);
 
   // Routing + drawer state for panelized settings
   const router = useRouter();
@@ -176,21 +183,73 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-[1200px] px-4 sm:px-6 py-6">
       {/* Mobile-only account entry */}
-      <section className="sm:hidden mb-4 rounded-2xl border border-border/60 bg-card/80 p-4">
+      <section
+        className="sm:hidden mb-4 rounded-2xl border border-border/60 bg-card/80 p-4 cursor-pointer hover:bg-muted/50 transition"
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          if (isSignedIn) {
+            // Trigger the Clerk UserButton popover programmatically
+            const btn = userButtonRef.current?.querySelector('button');
+            (btn as HTMLButtonElement | undefined)?.click();
+          } else {
+            openSignIn?.({});
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (isSignedIn) {
+              const btn = userButtonRef.current?.querySelector('button');
+              (btn as HTMLButtonElement | undefined)?.click();
+            } else {
+              openSignIn?.({});
+            }
+          }
+        }}
+        aria-label="Öppna konto"
+      >
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium">Konto</div>
             <div className="text-xs text-muted-foreground">Hantera ditt konto</div>
           </div>
-          <div>
+          <div className="pointer-events-none" ref={userButtonRef}>
             <SignedIn>
               <UserButton appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }} />
             </SignedIn>
             <SignedOut>
-              <SignInButton mode="modal">
-                <span className="text-sm font-medium px-3 py-1.5 rounded-md hover:bg-muted cursor-pointer">Logga in</span>
-              </SignInButton>
+              <span className="text-sm font-medium px-3 py-1.5 rounded-md">Logga in</span>
             </SignedOut>
+          </div>
+        </div>
+      </section>
+
+      {/* Mobile-only theme toggle */}
+      <section
+        className="sm:hidden mb-4 rounded-2xl border border-border/60 bg-card/80 p-4 cursor-pointer hover:bg-muted/50 transition"
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          const btn = themeToggleRef.current?.querySelector('button');
+          (btn as HTMLButtonElement | undefined)?.click();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            const btn = themeToggleRef.current?.querySelector('button');
+            (btn as HTMLButtonElement | undefined)?.click();
+          }
+        }}
+        aria-label="Välj tema"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium">Tema</div>
+            <div className="text-xs text-muted-foreground">Ljust eller mörkt</div>
+          </div>
+          <div className="pointer-events-none" ref={themeToggleRef}>
+            <ThemeTogglerButton variant="outline" size="sm" modes={['light','dark']} />
           </div>
         </div>
       </section>

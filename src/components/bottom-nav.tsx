@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Map, Scale, Settings } from "lucide-react";
+import { Home, Scale, Settings } from "lucide-react";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -11,20 +11,17 @@ export function BottomNav() {
     ? "settings"
     : pathname.startsWith("/compare")
     ? "compare"
-    : pathname.startsWith("/map")
-    ? "map"
     : pathname.startsWith("/overview")
     ? "overview"
     : "overview";
 
   const items: Array<{
-    key: "overview" | "map" | "compare" | "settings";
+    key: "overview" | "compare" | "settings";
     href: string;
     label: string;
     icon: React.ReactNode;
   }> = [
     { key: "overview", href: "/overview", label: "Översikt", icon: <Home size={22} /> },
-    { key: "map", href: "/map", label: "Karta", icon: <Map size={22} /> },
     { key: "compare", href: "/compare", label: "Jämför", icon: <Scale size={22} /> },
     { key: "settings", href: "/settings", label: "Inställningar", icon: <Settings size={22} /> },
   ];

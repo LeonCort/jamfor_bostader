@@ -440,6 +440,7 @@ export function useAccommodations() {
 
   const convexPlaces = useQuery(convexApi.places.list, {});
   const commuteResults = useQuery(convexApi.commute.listForUser, {});
+  const upsertCommuteResult = useMutation(convexApi.commute.upsertResult);
 
   // Live Directions API results (minutes) keyed by accommodationId -> placeId -> mode
   const [realCommute, setRealCommute] = useState<Record<string, Record<string, Record<TravelMode, number>>>>({});
@@ -520,9 +521,8 @@ export function useAccommodations() {
       setRealCommute((prev) => ({ ...prev, ...next }));
     }
   }, [accommodations, places]);
-  // Overlay Convex commute results onto UI when using server source
+  // Overlay Convex commute results (manual or scheduled) onto UI when available
   useEffect(() => {
-    if (COMMUTE_SOURCE !== 'convex') return;
     if (!commuteResults || !convexAccs || !convexPlaces) return;
     const accIdToClient = new Map<string, string>();
     for (const a of convexAccs) accIdToClient.set((a as any)._id, (a as any).clientId);
@@ -1078,7 +1078,48 @@ export function useAccommodations() {
       });
     }
 
-    return { add, addMock, addFromParsed, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces, updateFinanceSettings };
+    function saveManualCommuteMinutes(accommodationClientId: string, placeClientId: string, mode: TravelMode, minutes: number) {
+      // Optimistic local overlay
+      setRealCommute((prev) => ({
+        ...prev,
+        [accommodationClientId]: {
+          ...(prev[accommodationClientId] ?? {}),
+          [placeClientId]: {
+            ...(prev[accommodationClientId]?.[placeClientId] ?? {}),
+            [mode]: minutes,
+          } as Record<TravelMode, number>,
+        },
+      }));
+
+      if (DATA_SOURCE === 'local') {
+        // Persist to local cache so it survives reloads
+        try {
+          const a = (accommodations ?? []).find((x) => x.id === accommodationClientId);
+          const p = (places ?? []).find((x) => x.id === placeClientId);
+          const origin = a?.address ?? a?.title;
+          const destination = p?.address ?? p?.label;
+          if (origin && destination) {
+            const cache = loadCommuteCache();
+            const key = getCacheKey(origin, destination, mode, mode === 'transit' ? (p?.arriveBy ?? null) : null, null);
+            cache[key] = { minutes, updatedAt: Date.now() } as any;
+            saveCommuteCache(cache);
+          }
+        } catch {}
+        return;
+      }
+
+      // Persist to Convex when enabled
+      try {
+        const serverAccId = (convexAccs as any[] | undefined)?.find((a: any) => a.clientId === accommodationClientId)?._id;
+        const serverPlaceId = (convexPlaces as any[] | undefined)?.find((pp: any) => pp.clientId === placeClientId)?._id;
+        if (serverAccId && serverPlaceId) {
+          void upsertCommuteResult({ accommodationId: serverAccId, placeId: serverPlaceId, mode: mode as any, minutes });
+        }
+      } catch {}
+    }
+
+    return { add, addMock, addFromParsed, remove, update, clear, addOrUpdateCurrentMock, upsertCurrentFromUser, replacePlaces, updateFinanceSettings, saveManualCommuteMinutes };
+
   }, []);
 
   const current = (accommodations ?? []).find((a) => a.kind === "current") ?? null;

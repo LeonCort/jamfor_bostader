@@ -12,7 +12,7 @@ import { CurrencyInput } from "@/components/ui/formatted-input";
 
 import { Drawer } from "vaul";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
+
 import TotalCostDrawer from "@/components/accommodations/TotalCostDrawer";
 
 export type CardFieldKey =
@@ -87,7 +87,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   }, [item.postort, item.kommun, item.address]);
 
   // viktiga platser and commute times
-  const { places, commuteForMode, remove, update } = useAccommodations();
+  const { places, remove, update, commuteForMode, saveManualCommuteMinutes } = useAccommodations();
 
   // Down payment (15% of price) or current = market value - loan
   const downPayment = React.useMemo(() => {
@@ -131,7 +131,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   }, [item]);
 
   const commuteMode = config?.commuteMode ?? 'transit';
-  const singleTimes = commuteForMode(item.id, commuteMode);
+  // removed API lookup of commute times to avoid costs
   const listedPlaces = React.useMemo(() => (places || []).filter(p => p.label || p.address), [places]);
 
   // local drawers/state
@@ -141,10 +141,35 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
 
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  const [transitOpen, setTransitOpen] = React.useState(false);
-  const [transitCtx, setTransitCtx] = React.useState<TransitDrawerContext | null>(null);
-  const openTransit = React.useCallback((ctx: TransitDrawerContext) => { setTransitCtx(ctx); setTransitOpen(true); }, []);
+  const [directionsOpen, setDirectionsOpen] = React.useState(false);
+  const [directions, setDirections] = React.useState<{ origin: string; destination: string; mode: 'driving' | 'walking' | 'bicycling' | 'transit' } | null>(null);
+  const [directionsPlaceId, setDirectionsPlaceId] = React.useState<string | null>(null);
+  const [minutesInput, setMinutesInput] = React.useState<string>("");
 
+  const openDirections = React.useCallback((ctx: { origin: string; destination: string; mode?: 'driving' | 'walking' | 'bicycling' | 'transit'; placeId?: string }) => {
+    setDirections({ origin: ctx.origin, destination: ctx.destination, mode: ctx.mode ?? 'transit' });
+    setDirectionsPlaceId(ctx.placeId ?? null);
+    setDirectionsOpen(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (directionsOpen && directions && directionsPlaceId) {
+      const v = commuteForMode(item.id, directions.mode as any)?.[directionsPlaceId];
+      setMinutesInput(v != null ? String(v) : "");
+    }
+  }, [directionsOpen, directions, directionsPlaceId, item.id, commuteForMode]);
+
+  const saveManualTime = React.useCallback(() => {
+    if (!directions || !directionsPlaceId) return;
+    const minutes = parseInt(minutesInput, 10);
+    if (Number.isFinite(minutes) && minutes >= 0) {
+      saveManualCommuteMinutes(item.id, directionsPlaceId, directions.mode as any, minutes);
+    }
+  }, [directions, directionsPlaceId, minutesInput, item.id, saveManualCommuteMinutes]);
+
+  const clearManualTime = React.useCallback(() => {
+    setMinutesInput("");
+  }, []);
   const [costOpen, setCostOpen] = React.useState(false);
 
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -289,12 +314,12 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
           {showCommute && listedPlaces.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {listedPlaces.map((p) => {
-                const min = singleTimes[p.id];
+                const min = commuteForMode(item.id, commuteMode)[p.id];
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => openTransit({ origin: item.address ?? item.title, destination: p.address ?? p.label, arriveBy: p.arriveBy, direction: "to" })}
+                    onClick={() => openDirections({ origin: item.address ?? item.title, destination: (p.address ?? p.label) || '', mode: commuteMode, placeId: p.id })}
                     className="text-left rounded-xl bg-muted/40 p-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring transition"
                   >
                     <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -432,7 +457,66 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
             </Drawer.Portal>
           </Drawer.Root>
 
-          <TransitDrawer open={transitOpen} onOpenChange={setTransitOpen} context={transitCtx} />
+          <Drawer.Root open={directionsOpen} onOpenChange={setDirectionsOpen}>
+            <Drawer.Portal>
+              <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
+              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border/60 bg-card p-0 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[640px] md:rounded-t-none md:rounded-l-2xl">
+                <Drawer.Title className="sr-only">Vägbeskrivning</Drawer.Title>
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
+                    <div className="text-sm text-muted-foreground truncate">{directions ? `${directions.origin} → ${directions.destination}` : 'Vägbeskrivning'}</div>
+                    <Button variant="ghost" size="sm" onClick={() => setDirectionsOpen(false)}>Stäng</Button>
+                  </div>
+                  <div className="min-h-0 flex-1 flex flex-col">
+                    {/* Manual time input */}
+                    <div className="border-b border-border/60 p-4 flex items-end gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs text-muted-foreground mb-1">Ange restid manuellt (minuter)</label>
+                        <Input
+                          inputMode="numeric"
+                          placeholder="t.ex. 28"
+                          value={minutesInput}
+                          onChange={(e) => setMinutesInput(e.target.value.replace(/[^0-9]/g, ''))}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="secondary" onClick={clearManualTime}>Rensa</Button>
+                        <Button onClick={saveManualTime}>Spara</Button>
+                      </div>
+                    </div>
+
+                    {/* Map area */}
+                    <div className="min-h-0 flex-1">
+                      {directions && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+                        <iframe
+                          title="Google Maps vägbeskrivning"
+                          className="w-full h-full border-0"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                          src={`https://www.google.com/maps/embed/v1/directions?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&origin=${encodeURIComponent(directions.origin)}&destination=${encodeURIComponent(directions.destination)}&mode=${directions.mode}`}
+                        />
+                      ) : directions ? (
+                        <div className="h-full flex items-center justify-center p-4">
+                          <div className="text-center space-y-3">
+                            <div className="text-sm text-muted-foreground">Kartnyckel saknas för inbäddad vägbeskrivning.</div>
+                            <Button asChild>
+                              <a
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(directions.origin)}&destination=${encodeURIComponent(directions.destination)}&travelmode=${directions.mode}`}
+                              >
+                                Öppna i Google Maps
+                              </a>
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </Drawer.Content>
+            </Drawer.Portal>
+          </Drawer.Root>
 
           <TotalCostDrawer open={costOpen} onOpenChange={setCostOpen} item={item} />
 
@@ -554,8 +638,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                     {detailsTab === 'travel' && (
                       <div className="space-y-3 text-sm">
                         {listedPlaces.map((p) => {
-                          const times1 = commuteForMode(item.id, commuteMode);
-                          const min = times1[p.id];
+                          const min = commuteForMode(item.id, commuteMode)[p.id];
                           return (
                             <div key={p.id} className="rounded-md border p-3 flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
