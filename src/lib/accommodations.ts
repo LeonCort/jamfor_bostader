@@ -70,7 +70,7 @@ export type ImportantPlace = {
 
 export type TravelMode = "transit" | "driving" | "bicycling";
 
-const COMMUTE_CACHE_KEY = "reskollen.commuteCache.v1";
+const COMMUTE_CACHE_KEY = "reskollen.commuteManual.v1";
 type CommuteCacheEntry = { minutes: number; updatedAt: number };
 function loadCommuteCache(): Record<string, CommuteCacheEntry> {
   if (typeof window === "undefined") return {};
@@ -417,7 +417,7 @@ export type CurrentHomeInput = {
 };
 
 export function useAccommodations() {
-  const COMMUTE_SOURCE = process.env.NEXT_PUBLIC_COMMUTE_SOURCE ?? 'client';
+  const COMMUTE_SOURCE = process.env.NEXT_PUBLIC_COMMUTE_SOURCE ?? 'none';
   const DATA_SOURCE = process.env.NEXT_PUBLIC_DATA_SOURCE ?? 'local';
 
 
@@ -479,16 +479,11 @@ export function useAccommodations() {
     else setPlaces([{ id: generateId(), label: undefined, address: undefined }, { id: generateId(), label: undefined, address: undefined }]);
   }, []);
   const commuteIndex = useMemo(() => {
+    // No default travel times; start blank and only show user-provided values
     const idx: Record<string, Record<string, number>> = {};
     const accs = accommodations ?? [];
-    const ps = places ?? [];
     for (const a of accs) {
-      const m: Record<string, number> = {};
-      for (const p of ps) {
-        if (!p.id) continue;
-        m[p.id] = seededMinutes(a.id, p.id);
-      }
-      idx[a.id] = m;
+      idx[a.id] = {};
     }
     return idx;
   }, [accommodations, places]);
@@ -729,7 +724,7 @@ export function useAccommodations() {
       // Also create on Convex to trigger server-side scheduling
       try { void addAccommodationConv({ clientId: id, kind: (accommodation.kind ?? 'candidate') as any, title: accommodation.title, address: accommodation.address }); } catch { /* noop */ }
       // Fetch commute times only on client if source=client; otherwise Convex handles it server-side
-      if (COMMUTE_SOURCE === 'client') {
+      if (COMMUTE_SOURCE === 'client_fetch') {
         prefetchForAccommodationOnAdd(id, 'transit');
       }
     }
@@ -777,7 +772,7 @@ export function useAccommodations() {
       // Also create on Convex to trigger server-side scheduling
       try { void addAccommodationConv({ clientId: id, kind: 'candidate', title: newItem.title, address: newItem.address }); } catch { /* noop */ }
       // Prefetch on client only when using client source
-      if (COMMUTE_SOURCE === 'client') {
+      if (COMMUTE_SOURCE === 'client_fetch') {
         prefetchForAccommodationOnAdd(id, 'transit');
       }
       return newItem;
@@ -863,7 +858,7 @@ export function useAccommodations() {
       // Prefetch only for newly added places (client-side mock)
       for (const p of finalized) {
         if (p.id && !prevIds.has(p.id)) {
-          if (COMMUTE_SOURCE === 'client') {
+          if (COMMUTE_SOURCE === 'client_fetch') {
             prefetchForPlaceOnAdd(p.id, 'transit');
           }
         }
@@ -1053,7 +1048,7 @@ export function useAccommodations() {
         });
       } catch { /* noop */ }
       // Prefetch on client only when using client source
-      if (COMMUTE_SOURCE === 'client') {
+      if (COMMUTE_SOURCE === 'client_fetch') {
         prefetchForAccommodationOnAdd(id, 'transit');
       }
       return item;

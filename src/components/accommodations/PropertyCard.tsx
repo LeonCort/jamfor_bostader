@@ -152,12 +152,15 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
     setDirectionsOpen(true);
   }, []);
 
+  const dMode = directions?.mode;
   React.useEffect(() => {
-    if (directionsOpen && directions && directionsPlaceId) {
-      const v = commuteForMode(item.id, directions.mode as any)?.[directionsPlaceId];
+    if (directionsOpen && directionsPlaceId && dMode) {
+      const v = commuteForMode(item.id, dMode as any)?.[directionsPlaceId];
       setMinutesInput(v != null ? String(v) : "");
     }
-  }, [directionsOpen, directions, directionsPlaceId, item.id, commuteForMode]);
+    // Intentionally omit commuteForMode from deps to avoid resetting while typing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directionsOpen, directionsPlaceId, dMode, item.id]);
 
   const saveManualTime = React.useCallback(() => {
     if (!directions || !directionsPlaceId) return;
