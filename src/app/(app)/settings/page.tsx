@@ -231,7 +231,7 @@ export default function SettingsPage() {
       <Drawer.Root open={!!panel} onOpenChange={(o) => { if (!o) closePanel(); }}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-          <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[80vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[720px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+          <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[90vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[720px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
             <Drawer.Title className="sr-only">Inställningar</Drawer.Title>
             <div className="mx-auto max-w-screen-md flex h-full flex-col">
               <div className="flex items-center justify-between">

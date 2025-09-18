@@ -254,7 +254,7 @@ export default function OverviewPage() {
       <Drawer.Root open={customizeOpen} onOpenChange={setCustomizeOpen}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-          <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[70vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[560px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+          <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[90vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[560px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
             <div className="mx-auto max-w-screen-sm flex flex-col gap-4">
               <Drawer.Handle className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-border sm:hidden" />
               <Drawer.Title className="sr-only">Anpassa kort</Drawer.Title>
@@ -303,7 +303,7 @@ export default function OverviewPage() {
                   setDragIndex(null); setOverIndex(null); setOverPos(null);
                 }
                 return (
-                  <div className="mt-4 space-y-2 max-h-[50vh] overflow-y-auto">
+                  <div className="mt-4 space-y-2 max-h-[65vh] overflow-y-auto">
                     {display.map((k, i) => (
                       <div
                         key={k}
@@ -348,7 +348,7 @@ export default function OverviewPage() {
       <Drawer.Root open={open} onOpenChange={setOpen}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-          <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[60vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[520px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+          <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[50vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[520px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
             <div className="mx-auto max-w-screen-sm flex flex-col gap-4">
               <Drawer.Handle className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-border sm:hidden" />
               <Drawer.Title className="sr-only">L&auml;gg till bostad</Drawer.Title>

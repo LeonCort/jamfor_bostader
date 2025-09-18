@@ -198,7 +198,7 @@ export default function CellDetailDrawer({
     <Drawer.Root open={open} onOpenChange={onOpenChange} direction={isMd ? "right" : "bottom"}>
         <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[86vh] rounded-t-2xl border border-border bg-card text-foreground shadow-2xl md:left-auto md:right-0 md:top-0 md:bottom-0 md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border bg-card text-foreground shadow-2xl md:left-auto md:right-0 md:top-0 md:bottom-0 md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
 
 	        <Drawer.Title className="sr-only">{ctx?.label ?? "Detaljer"}</Drawer.Title>
 
