@@ -5,6 +5,7 @@ import { Drawer } from "vaul";
 import { X, Info, ArrowUpRight, ArrowDownRight, Calculator, TrendingUp, Home } from "lucide-react";
 import type { Accommodation } from "@/lib/accommodations";
 import { useAccommodations } from "@/lib/accommodations";
+import { metrics, deltaVariant, type MetricKey } from "@/lib/compareMetrics";
 
 function formatValue(val?: number | string, unit?: string) {
   if (val == null || val === "") return "—";
@@ -183,9 +184,23 @@ export default function CellDetailDrawer({
   const acc = ctx?.acc;
   const isMd = useMediaQuery("(min-width: 768px)");
   const delta = ctx?.delta ?? null;
-  const deltaTone = delta == null || delta === 0 ? "neutral" : delta < 0 ? "good" : "bad";
-  const DeltaIcon = deltaTone === "good" ? ArrowDownRight : ArrowUpRight;
-  const deltaToneClass = deltaTone === "good" ? "stroke-chart-2" : deltaTone === "bad" ? "stroke-chart-5" : "stroke-muted-foreground";
+  const goodWhenHigher = React.useMemo(() => {
+    const k = ctx?.metricKey as MetricKey | undefined;
+    return k ? (metrics[k]?.goodWhenHigher ?? false) : false;
+  }, [ctx?.metricKey]);
+  const deltaTone = deltaVariant(delta, goodWhenHigher);
+  const isUp = (delta ?? 0) > 0;
+  const DeltaIcon = isUp ? ArrowUpRight : ArrowDownRight;
+  const deltaTextClass = deltaTone === "good"
+    ? "text-emerald-700 dark:text-emerald-400"
+    : deltaTone === "bad"
+    ? "text-rose-700 dark:text-rose-400"
+    : "text-muted-foreground";
+  const deltaIconClass = deltaTone === "good"
+    ? "text-emerald-600 dark:text-emerald-400"
+    : deltaTone === "bad"
+    ? "text-rose-600 dark:text-rose-400"
+    : "text-muted-foreground";
 
   const { finance } = useAccommodations();
   const financeOpts = React.useMemo(() => ({
@@ -222,8 +237,9 @@ export default function CellDetailDrawer({
                   <div className="text-3xl font-bold mb-1">{formatValue(ctx?.value, ctx?.unit)}</div>
                   {delta != null && delta !== 0 ? (
                     <div className={`inline-flex items-center gap-1 text-sm font-medium`}>
-                      <DeltaIcon className={`h-4 w-4 ${deltaToneClass}`} />
-                      <span className={deltaToneClass}>{`${delta > 0 ? "+" : ""}${delta.toLocaleString("sv-SE")} ${ctx?.unit ?? ""}`.trim()}</span>
+                      <DeltaIcon className={`h-4 w-4 ${deltaIconClass}`} aria-hidden="true" />
+                      <span className={deltaTextClass}>{`${delta > 0 ? "+" : ""}${delta.toLocaleString("sv-SE")} ${ctx?.unit ?? ""}`.trim()}</span>
+                      <span className="sr-only">{deltaTone === "good" ? "Bättre" : "Sämre"}</span>
                     </div>
                   ) : (
                     <div className="text-sm text-muted-foreground">Nuvarande</div>
@@ -313,12 +329,21 @@ export default function CellDetailDrawer({
                               </div>
                               <div className="text-sm font-medium">{v.value != null ? `${(v.value as number).toLocaleString("sv-SE")} ${ctx?.unit ?? ""}`.trim() : "—"}</div>
                               <div className={`inline-flex items-center gap-1 text-sm font-medium`}>
-                                {(v.diff ?? 0) <= 0 ? (
-                                  <ArrowDownRight className="h-4 w-4 stroke-chart-2" />
-                                ) : (
-                                  <ArrowUpRight className="h-4 w-4 stroke-chart-5" />
-                                )}
-                                <span className={(v.diff ?? 0) <= 0 ? "stroke-chart-2 text-chart-2" : "stroke-chart-5 text-chart-5"}>{`${v.diff! > 0 ? "+" : ""}${(v.diff ?? 0).toLocaleString("sv-SE")} ${ctx?.unit ?? ""}`.trim()}</span>
+                                {(() => {
+                                  const diff = v.diff ?? 0;
+                                  const up = diff > 0;
+                                  const tone = diff === 0 ? "neutral" : (goodWhenHigher ? (up ? "good" : "bad") : (up ? "bad" : "good"));
+                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
+                                  const iconCls = tone === "good" ? "text-emerald-600 dark:text-emerald-400" : tone === "bad" ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground";
+                                  const textCls = tone === "good" ? "text-emerald-700 dark:text-emerald-400 font-semibold" : tone === "bad" ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-muted-foreground";
+                                  return (
+                                    <>
+                                      <Icon className={"h-4 w-4 " + iconCls} aria-hidden="true" />
+                                      <span className={textCls}>{`${diff > 0 ? "+" : ""}${diff.toLocaleString("sv-SE")} ${ctx?.unit ?? ""}`.trim()}</span>
+                                      <span className="sr-only">{tone === "good" ? "B\u00e4ttre" : tone === "bad" ? "S\u00e4mre" : "Of\u00f6r\u00e4ndrat"}</span>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </div>
                           ))}

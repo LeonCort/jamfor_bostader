@@ -5,11 +5,13 @@ import { useAccommodations } from "@/lib/accommodations";
 import { KeyValueGroup, KeyValueRow } from "@/components/ui/key-value";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import CellDetailDrawer, { CellContext } from "@/components/compare/CellDetailDrawer";
-import { CircleDollarSign, Ruler, BedDouble, Square, Award, ArrowUpRight, ArrowDownRight, Asterisk } from "lucide-react";
-import TransitDrawer, { TransitDrawerContext } from "@/components/route/TransitDrawer";
+import { CircleDollarSign, Ruler, BedDouble, Square, Asterisk } from "lucide-react";
 import CompareRow from "@/components/compare/CompareRow";
 import CompareCell from "@/components/compare/CompareCell";
-import TransitPanel from "@/components/compare/TransitPanel";
+import { Drawer } from "vaul";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { pickEmbedKey, buildDirectionsEmbedUrl } from "@/lib/mapsEmbedUrl";
 
 import { bestValue, deltaVariant, metrics, type MetricKey } from "@/lib/compareMetrics";
 
@@ -20,7 +22,7 @@ function formatSek(n?: number) {
 }
 
 export default function ComparePage() {
-  const { accommodations, current, places, commuteForTwo, finance } = useAccommodations();
+  const { accommodations, current, places, commuteForTwo, commuteForMode, finance, saveManualCommuteMinutes } = useAccommodations();
 
   const columns = useMemo(() => {
     const list = [...accommodations];
@@ -32,14 +34,37 @@ export default function ComparePage() {
   const [cellCtx, setCellCtx] = useState<CellContext | null>(null);
   function openCell(ctx: CellContext) { setCellCtx(ctx); setCellOpen(true); }
   const mobileTemplate = useMemo(() => `repeat(${columns.length}, minmax(160px,1fr))`, [columns.length]);
-  const toneClass = (tone: "good" | "bad" | "neutral") =>
-    tone === "good" ? "stroke-chart-2" : tone === "bad" ? "stroke-chart-5" : "stroke-muted-foreground";
+
 
   const isSm = useMediaQuery("(min-width: 640px)");
 
-  const [transitOpen, setTransitOpen] = useState(false);
-  const [transitCtx, setTransitCtx] = useState<TransitDrawerContext | null>(null);
-  function openTransit(ctx: TransitDrawerContext) { setTransitCtx(ctx); setTransitOpen(true); }
+  // Directions drawer (same UX as Overview card)
+  const [dirOpen, setDirOpen] = useState(false);
+  const [directions, setDirections] = useState<{ origin: string; destination: string; mode: 'driving' | 'walking' | 'bicycling' | 'transit' } | null>(null);
+  const [directionsPlaceId, setDirectionsPlaceId] = useState<string | null>(null);
+  const [directionsAccId, setDirectionsAccId] = useState<string | null>(null);
+  const [minutesInput, setMinutesInput] = useState<string>("");
+  const isMd = useMediaQuery("(min-width: 768px)");
+  const openDirections = (ctx: { origin: string; destination: string; placeId: string; accId: string; mode?: 'driving' | 'walking' | 'bicycling' | 'transit' }) => {
+    setDirections({ origin: ctx.origin, destination: ctx.destination, mode: ctx.mode ?? 'transit' });
+    setDirectionsPlaceId(ctx.placeId);
+    setDirectionsAccId(ctx.accId);
+    setDirOpen(true);
+  };
+  useEffect(() => {
+    if (dirOpen && directionsPlaceId && directions && directionsAccId) {
+      const v = commuteForMode(directionsAccId, directions.mode)[directionsPlaceId];
+      setMinutesInput(v != null ? String(v) : "");
+    }
+  }, [dirOpen, directionsPlaceId, directions, directionsAccId, commuteForMode]);
+  const saveManualTime = () => {
+    if (!directions || !directionsPlaceId || !directionsAccId) return;
+    const minutes = parseInt(minutesInput, 10);
+    if (Number.isFinite(minutes) && minutes >= 0) {
+      saveManualCommuteMinutes(directionsAccId, directionsPlaceId, directions.mode, minutes);
+    }
+  };
+  const clearManualTime = () => setMinutesInput("");
 
   // Detached sticky header syncing with horizontal scroller
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -87,7 +112,7 @@ export default function ComparePage() {
   }
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 py-6 space-y-6">
+    <div className="mx-auto max-w-screen-2xl px-2 sm:px-6 py-3 sm:py-6 space-y-4 sm:space-y-6">
 
       {/* Comparison sections */}
 
@@ -95,13 +120,13 @@ export default function ComparePage() {
 
       <div className="rounded-xl border bg-card">
         {/* Detached sticky header */}
-        <div className="sticky top-14 z-30 mb-2 sm:mb-3">
+        <div className="sticky top-0 sm:top-14 z-30 mb-1 sm:mb-3">
           <div className="bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border">
             <div ref={headerViewportRef} className="overflow-hidden">
               <div ref={headerContentRef} className="grid" style={{ gridTemplateColumns: isSm ? gridTemplate : mobileTemplate }}>
-                {isSm ? (<div className="px-4 py-3 text-xs text-muted-foreground">&nbsp;</div>) : null}
+                {isSm ? (<div className="px-3 py-2 sm:px-4 sm:py-3 text-xs text-muted-foreground">&nbsp;</div>) : null}
                 {columns.map((a) => (
-                  <div key={a.id} className="px-4 py-3">
+                  <div key={a.id} className="px-3 py-2 sm:px-4 sm:py-3">
                     <HoverCard>
                       <HoverCardTrigger asChild>
                         <div className="cursor-default">
@@ -155,7 +180,7 @@ export default function ComparePage() {
               {columns.map((a) => (<div key={a.id} />))}
             </div>
           ) : (
-            <div className="px-4 pt-4 pb-2 text-sm font-medium text-foreground">Övergripande</div>
+            <div className="px-3 pt-3 pb-1 text-sm font-medium text-foreground">Övergripande</div>
           )}
           <div>
             {/* Mobile rendering (no per-row scrollers); labels above values */}
@@ -194,11 +219,11 @@ export default function ComparePage() {
 
                                 breakdown: key === "totalMonthlyCost" ? metrics[key].breakdown?.(a, { current, finance }) : undefined,
                               })}
-                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="w-full text-left px-3 py-3 sm:px-4 sm:py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               <MobileLabel label={M.label} unit={M.unit} />
                               <div className="flex items-center gap-1 leading-none">
-                                <div className="text-xl font-bold inline-flex items-center gap-1">
+                                <div className="text-lg sm:text-xl font-bold inline-flex items-center gap-1">
                                   {valueText}
                                   {key === "totalMonthlyCost" && (((a as any).driftkostnaderIsEstimated) || ((a as any).maintenanceUnknown)) ? (
                                     (a as any).maintenanceUnknown ? (
@@ -210,14 +235,6 @@ export default function ComparePage() {
                                     )
                                   ) : null}
                                 </div>
-                                {(() => {
-                                  const isBest = val != null && best != null && val === best;
-                                  if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
-                                  if (a.kind === "current" || !delta || delta === 0) return null;
-                                  const up = (delta as number) > 0;
-                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                                })()}
                               </div>
                             </button>
                           </div>
@@ -288,32 +305,11 @@ export default function ComparePage() {
                               }
                             }),
                           })}
-                          className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="w-full text-left px-3 py-3 sm:px-4 sm:py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <MobileLabel label="Kontantinsats" unit="kr" />
                           <div className="flex items-center gap-1 leading-none">
-                            <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "—"}</div>
-                            {(() => {
-                              const best = bestValue(columns.map((c) => {
-                                if (c.kind === "current") {
-                                  const loans = (((c.metrics as any)?.mortgage?.loans) ?? []) as { principal: number }[];
-                                  const debt = loans.reduce((s, l) => s + (l?.principal ?? 0), 0);
-                                  const v = c.currentValuation ?? 0;
-                                  return v > 0 ? v - debt : undefined;
-                                } else {
-                                  const ki = (c as any).kontantinsats as number | undefined;
-                                  if (ki != null) return ki;
-                                  const bp = (c as any).begartPris as number | undefined;
-                                  return bp != null ? Math.round(bp * 0.15) : undefined;
-                                }
-                              }), /* goodWhenHigher= */ false);
-                              const isBest = val != null && best != null && val === best;
-                              if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
-                              if (a.kind === "current" || !delta || delta === 0) return null;
-                              const up = (delta as number) > 0;
-                              const Icon = up ? ArrowUpRight : ArrowDownRight;
-                              return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                            })()}
+                            <div className="text-lg sm:text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} kr` : "—"}</div>
                           </div>
                         </button>
                       </div>
@@ -370,14 +366,6 @@ export default function ComparePage() {
                                   )
                                 ) : null}
                               </div>
-                              {(() => {
-                                const isBest = val != null && best != null && val === best;
-                                if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                                if (a.kind === "current" || !delta || delta === 0) return null;
-                                const up = (delta as number) > 0;
-                                const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                              })()}
                             </CompareCell>
                           </div>
                         );
@@ -403,7 +391,7 @@ export default function ComparePage() {
               {columns.map((a) => (<div key={a.id} />))}
             </div>
           ) : (
-            <div className="border-t border-border px-4 py-3 text-sm font-medium text-foreground">Husdetaljer</div>
+            <div className="border-t border-border px-3 py-2 text-sm font-medium text-foreground">Husdetaljer</div>
           )}
           <div>
 
@@ -435,19 +423,11 @@ export default function ComparePage() {
                                 metricKey: key,
                                 valuesAcross,
                               })}
-                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="w-full text-left px-3 py-3 sm:px-4 sm:py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               <MobileLabel label={M.label} unit={M.unit} />
                               <div className="flex items-center gap-1 leading-none">
-                                <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}` : "—"}</div>
-                                {(() => {
-                                  const isBest = val != null && best != null && val === best;
-                                  if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
-                                  if (a.kind === "current" || !delta || delta === 0) return null;
-                                  const up = (delta as number) > 0;
-                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                                })()}
+                                <div className="text-lg sm:text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}` : "—"}</div>
                               </div>
                             </button>
                           </div>
@@ -470,14 +450,6 @@ export default function ComparePage() {
                           <div key={a.id + key}>
                             <CompareCell onClick={() => openCell({ acc: a, label: M.label, unit: M.unit, value: val, delta, metricKey: key, valuesAcross })}>
                               <div className="text-xl font-bold">{val != null ? `${val.toLocaleString("sv-SE")} ${M.unit ?? ""}` : "—"}</div>
-                              {(() => {
-                                const isBest = val != null && best != null && val === best;
-                                if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                                if (a.kind === "current" || !delta || delta === 0) return null;
-                                const up = (delta as number) > 0;
-                                const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                              })()}
                             </CompareCell>
                           </div>
                         );
@@ -498,7 +470,7 @@ export default function ComparePage() {
               {columns.map((a) => (<div key={a.id} />))}
             </div>
           ) : (
-            <div className="border-t border-border px-4 py-3 text-sm font-medium text-foreground">Kostnader</div>
+            <div className="border-t border-border px-3 py-2 text-sm font-medium text-foreground">Kostnader</div>
           )}
           <div>
 
@@ -524,24 +496,16 @@ export default function ComparePage() {
                             <button
                               type="button"
                               onClick={() => openCell({ acc: a, label: M.label, unit: unitForCell, value: val, delta, metricKey: key, valuesAcross })}
-                              className="w-full text-left px-4 py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="w-full text-left px-3 py-3 sm:px-4 sm:py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               <MobileLabel label={M.label} unit={M.unit} />
                               <div className="flex items-center gap-1 leading-none">
-                                <div className="text-xl font-bold inline-flex items-center gap-1">
+                                <div className="text-lg sm:text-xl font-bold inline-flex items-center gap-1">
                                   {valueText}
                                   {key === "driftkostnaderMonthly" && ((a as any).driftkostnaderIsEstimated) ? (
                                     <Asterisk className="h-4 w-4 text-muted-foreground" />
                                   ) : null}
                                 </div>
-                                {(() => {
-                                  const isBest = val != null && best != null && val === best;
-                                  if (isBest) return <Award className="h-3.5 w-3.5 stroke-chart-2" />;
-                                  if (a.kind === "current" || !delta || delta === 0) return null;
-                                  const up = (delta as number) > 0;
-                                  const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                  return <Icon className={`h-3.5 w-3.5 ${toneClass(tone)}`} />;
-                                })()}
                               </div>
                             </button>
                           </div>
@@ -570,14 +534,6 @@ export default function ComparePage() {
                                   <Asterisk className="h-4 w-4 text-muted-foreground" />
                                 ) : null}
                               </div>
-                              {(() => {
-                                const isBest = val != null && best != null && val === best;
-                                if (isBest) return <Award className="h-4 w-4 stroke-chart-2" />;
-                                if (a.kind === "current" || !delta || delta === 0) return null;
-                                const up = (delta as number) > 0;
-                                const Icon = up ? ArrowUpRight : ArrowDownRight;
-                                return <Icon className={`h-4 w-4 ${toneClass(tone)}`} />;
-                              })()}
                             </CompareCell>
                           </div>
                         );
@@ -598,19 +554,51 @@ export default function ComparePage() {
               {columns.map((a) => (<div key={a.id} />))}
             </div>
           ) : (
-            <div className="border-t border-border px-4 py-3 text-sm font-medium text-foreground">Pendling</div>
+            <div className="border-t border-border px-3 py-2 text-sm font-medium text-foreground">Pendling</div>
           )}
           <div>
-            <TransitPanel
-              columns={columns}
-              current={current}
-              places={places}
-              gridTemplate={gridTemplate}
-              mobileTemplate={mobileTemplate}
-              openTransit={openTransit}
-              commuteForTwo={commuteForTwo}
-            />
+            {places.map((p) => (
+              <div key={p.id}>
+                {/* Mobile: one KPI per place, opens directions drawer */}
+                {!isSm && (
+                  <div className="grid" style={{ gridTemplateColumns: mobileTemplate }}>
+                    {columns.map((a) => {
+                      const mins = (commuteForMode(a.id, 'transit') as Record<string, number | undefined>)[p.id];
+                      return (
+                        <div key={a.id + p.id} className="px-2 py-2">
+                          <button
+                            type="button"
+                            onClick={() => openDirections({ origin: a.address ?? a.title, destination: (p.address ?? p.label) || '', placeId: p.id, accId: a.id, mode: 'transit' })}
+                            className="w-full text-left px-3 py-3 sm:px-4 sm:py-4 rounded-md hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <MobileLabel label={p.label || 'Plats'} unit="min" />
+                            <div className="flex items-center gap-1 leading-none">
+                              <div className="text-lg sm:text-xl font-bold">{mins != null ? `${mins.toLocaleString('sv-SE')} min` : '—'}</div>
+                            </div>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
+                {/* Desktop */}
+                {isSm && (
+                  <CompareRow label={p.label || 'Plats'} unit="min" gridTemplate={gridTemplate}>
+                    {columns.map((a) => {
+                      const mins = (commuteForMode(a.id, 'transit') as Record<string, number | undefined>)[p.id];
+                      return (
+                        <div key={a.id + p.id}>
+                          <CompareCell onClick={() => openDirections({ origin: a.address ?? a.title, destination: (p.address ?? p.label) || '', placeId: p.id, accId: a.id, mode: 'transit' })}>
+                            <div className="text-xl font-bold">{mins != null ? `${mins.toLocaleString('sv-SE')} min` : '—'}</div>
+                          </CompareCell>
+                        </div>
+                      );
+                    })}
+                  </CompareRow>
+                )}
+              </div>
+            ))}
           </div>
         </section>
           </div>
@@ -619,7 +607,63 @@ export default function ComparePage() {
       </div>
       <CellDetailDrawer open={cellOpen} onOpenChange={setCellOpen} ctx={cellCtx} />
 
-        <TransitDrawer open={transitOpen} onOpenChange={setTransitOpen} context={transitCtx} />
+        <Drawer.Root open={dirOpen} onOpenChange={setDirOpen} direction={isMd ? "right" : "bottom"}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
+            <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border/60 bg-card p-0 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[640px] md:rounded-t-none md:rounded-l-2xl">
+              <Drawer.Title className="sr-only">Vägbeskrivning</Drawer.Title>
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
+                  <div className="text-sm text-muted-foreground truncate">{directions ? `${directions.origin} → ${directions.destination}` : 'Vägbeskrivning'}</div>
+                  <Button variant="ghost" size="sm" onClick={() => setDirOpen(false)}>Stäng</Button>
+                </div>
+                <div className="min-h-0 flex-1 flex flex-col">
+                  {/* Manual time input */}
+                  <div className="border-b border-border/60 p-4 flex items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs text-muted-foreground mb-1">Ange restid manuellt (minuter)</label>
+                      <Input inputMode="numeric" placeholder="t.ex. 28" value={minutesInput} onChange={(e) => setMinutesInput(e.target.value.replace(/[^0-9]/g, ''))} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" onClick={clearManualTime}>Rensa</Button>
+                      <Button onClick={saveManualTime}>Spara</Button>
+                    </div>
+                  </div>
+                  {/* Map area */}
+                  <div className="min-h-0 flex-1">
+                    {(() => {
+                      const apiKey = pickEmbedKey();
+                      return directions && apiKey ? (
+                        <iframe
+                          title="Google Maps vägbeskrivning"
+                          className="w-full h-full border-0"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                          src={buildDirectionsEmbedUrl(apiKey, directions.origin, directions.destination, directions.mode as any)}
+                        />
+                      ) : directions ? (
+                        <div className="h-full flex items-center justify-center p-4">
+                          <div className="text-center space-y-3">
+                            <div className="text-sm text-muted-foreground">Kartnyckel saknas för inbäddad vägbeskrivning.</div>
+                            <Button asChild>
+                              <a
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(directions.origin)}&destination=${encodeURIComponent(directions.destination)}&travelmode=${directions.mode}`}
+                              >
+                                Öppna i Google Maps
+                              </a>
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
     </div>
   );
 }
