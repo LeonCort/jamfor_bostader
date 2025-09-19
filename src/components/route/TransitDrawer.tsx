@@ -203,7 +203,27 @@ export function TransitDrawer({
             <div className="min-h-0 flex-1 overflow-y-auto">
               {showDetails && selectedRoute ? (
                 <RouteDetailFullPanel
-                  route={selectedRoute as any}
+                  route={selectedRoute as {
+                    id: string;
+                    mode: 'car' | 'transit' | 'walking' | 'biking';
+                    duration: string;
+                    distance: string;
+                    description: string;
+                    departureTime?: string;
+                    arrivalTime?: string;
+                    steps: Array<{
+                      id: string;
+                      type: 'walk' | 'bus' | 'train' | 'drive';
+                      instruction: string;
+                      duration: string;
+                      distance?: string;
+                      line?: string;
+                      stops?: number;
+                      departureTime?: string;
+                      arrivalTime?: string;
+                      location?: string;
+                    }>;
+                  }}
                   onBackClick={() => setSelectedId(null)}
                   onClose={() => onOpenChange(false)}
                   origin={origin || "Start"}
@@ -216,7 +236,34 @@ export function TransitDrawer({
                     <div className="flex items-center gap-2"><MapPin className="h-4 w-4" /><span>Ruttförslag</span></div>
                     <div className="text-xs">Mockdata</div>
                   </div>
-                  <RouteOptionsList routes={routes as any} selectedRoute={undefined as any} onRouteSelect={(id: string) => setSelectedId(id)} />
+                  <RouteOptionsList
+                    routes={routes as Array<{
+                      id: string;
+                      mode: 'car' | 'transit' | 'walking' | 'biking';
+                      duration: string;
+                      distance: string;
+                      description: string;
+                      departureTime?: string;
+                      arrivalTime?: string;
+                      steps: Array<{
+                        id: string;
+                        type: 'walk' | 'bus' | 'train' | 'drive';
+                        instruction: string;
+                        duration: string;
+                        distance?: string;
+                        line?: string;
+                        stops?: number;
+                        departureTime?: string;
+                        arrivalTime?: string;
+                        location?: string;
+                      }>;
+                      hasAlert?: boolean;
+                      walkingTime?: string;
+                      departureLocation?: string;
+                    }>}
+                    selectedRoute={selectedId || ""}
+                    onRouteSelect={(id: string) => setSelectedId(id)}
+                  />
                 </div>
               )}
             </div>

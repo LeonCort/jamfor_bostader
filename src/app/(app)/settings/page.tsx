@@ -58,7 +58,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const panel: "current" | "places" | "finance" | null =
     panelParam === "current" || panelParam === "places" || panelParam === "finance"
-      ? (panelParam as any)
+      ? (panelParam as "current" | "places" | "finance")
       : null;
   function openPanel(p: "current" | "places" | "finance") {
     router.push(`${pathname}?panel=${p}`);
@@ -75,7 +75,8 @@ export default function SettingsPage() {
   // Current home form state
   const [loanRows, setLoanRows] = useState<Array<{ principal: string; rate: string }>>([]);
   useEffect(() => {
-    const existing = (((current?.metrics as any)?.mortgage?.loans) ?? []) as Array<{ principal?: number; interestRateAnnual?: number }>;
+    const currentMetrics = current?.metrics as { mortgage?: { loans?: Array<{ principal?: number; interestRateAnnual?: number }> } } | undefined;
+    const existing = (currentMetrics?.mortgage?.loans ?? []) as Array<{ principal?: number; interestRateAnnual?: number }>;
     const next = (existing && existing.length > 0)
       ? existing.map((l) => ({
           principal: l?.principal != null ? nfSE2.format(l.principal) : "",
@@ -600,7 +601,7 @@ export default function SettingsPage() {
                                 const prefs = read('reskollen.cardConfig.v1');
                                 const res = await migrate({ accommodations, places, finance, prefs });
                                 setMigrateMessage(`Migrerade ${res?.accUpserts ?? 0} bostäder, ${res?.placeUpserts ?? 0} platser`);
-                              } catch (e) {
+                              } catch {
                                 setMigrateMessage('Fel vid migrering. Försök igen.');
                               } finally {
                                 setMigrating(false);

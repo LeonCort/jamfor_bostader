@@ -55,7 +55,7 @@ export default function ComparePage() {
       header.style.transform = `translateX(${-scroller.scrollLeft}px)`;
     };
     sync();
-    scroller.addEventListener("scroll", sync, { passive: true } as any);
+    scroller.addEventListener("scroll", sync, { passive: true });
     return () => scroller.removeEventListener("scroll", sync);
   }, [columns.length]);
 
@@ -66,7 +66,7 @@ export default function ComparePage() {
     if (!scroller || !viewport) return;
     const setWidth = () => { viewport.style.width = `${scroller.clientWidth}px`; };
     setWidth();
-    const ResizeObs = (window as any).ResizeObserver;
+    const ResizeObs = (window as typeof window & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
     const ro = ResizeObs ? new ResizeObs(setWidth) : null;
     ro?.observe(scroller);
     window.addEventListener("resize", setWidth);
@@ -634,11 +634,11 @@ function useMediaQuery(query: string) {
     handler();
 
 
-    if ((m as any).addEventListener) m.addEventListener("change", handler);
-    else (m as any).addListener(handler);
+    if (m.addEventListener) m.addEventListener("change", handler);
+    else m.addListener(handler);
     return () => {
-      if ((m as any).removeEventListener) m.removeEventListener("change", handler);
-      else (m as any).removeListener(handler);
+      if (m.removeEventListener) m.removeEventListener("change", handler);
+      else m.removeListener(handler);
     };
   }, [query]);
   return matches;

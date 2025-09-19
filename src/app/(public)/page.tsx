@@ -10,7 +10,7 @@ export default function LandingPage() {
   function RedirectToOverview() {
     useEffect(() => {
       router.replace("/overview");
-    }, [router]);
+    }, []); // router is stable, no need to include in deps
     return null;
   }
 

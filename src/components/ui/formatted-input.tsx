@@ -30,7 +30,7 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, NumericFormatProps>(
       decimalScale={decimalScale}
       fixedDecimalScale={fixedDecimalScale}
       allowNegative={allowNegative}
-      inputMode={inputMode as any}
+      inputMode={inputMode as "text" | "decimal" | "numeric" | "tel" | "search" | "email" | "url"}
     />
   )
 );
@@ -38,7 +38,7 @@ CurrencyInput.displayName = "CurrencyInput";
 
 // Percentage input with comma decimals (no thousand separator)
 const PercentInput = React.forwardRef<HTMLInputElement, NumericFormatProps>(
-  ({ thousandSeparator = false as any, decimalSeparator = ",", decimalScale = 2, fixedDecimalScale = true, allowNegative = false, inputMode = "decimal", ...props }, ref) => (
+  ({ thousandSeparator = false, decimalSeparator = ",", decimalScale = 2, fixedDecimalScale = true, allowNegative = false, inputMode = "decimal", ...props }, ref) => (
     <BaseFormattedInput
       {...props}
       getInputRef={ref}
@@ -47,7 +47,7 @@ const PercentInput = React.forwardRef<HTMLInputElement, NumericFormatProps>(
       decimalScale={decimalScale}
       fixedDecimalScale={fixedDecimalScale}
       allowNegative={allowNegative}
-      inputMode={inputMode as any}
+      inputMode={inputMode as "text" | "decimal" | "numeric" | "tel" | "search" | "email" | "url"}
     />
   )
 );

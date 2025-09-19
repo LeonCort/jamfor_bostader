@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Bus, Footprints, Car, Train, AlertTriangle } from 'lucide-react';
+import { Bus, Footprints, AlertTriangle } from 'lucide-react';
 interface RouteStep {
   id: string;
   type: 'walk' | 'bus' | 'train' | 'drive';

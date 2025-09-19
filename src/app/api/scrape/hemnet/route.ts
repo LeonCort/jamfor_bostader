@@ -74,18 +74,30 @@ export async function GET(req: Request) {
     const tn = l?.thumbnail ?? null;
     const imageUrl = tn?.['url({"format":"ITEMGALLERY_L"})'] ?? null;
     const imgs = l?.['images({"limit":300})']?.images ?? [];
-    const images = imgs.map((im: any) => im?.['url({"format":"WIDTH1024"})']).filter(Boolean);
-    const floorPlans = (l?.floorPlanImages ?? []).map((im: any) => im?.['url({"format":"WIDTH1024"})']).filter(Boolean);
+    const images = imgs.map((im: unknown) => {
+      const imageObj = im as { 'url({"format":"WIDTH1024"})': string } | null;
+      return imageObj?.['url({"format":"WIDTH1024"})'];
+    }).filter(Boolean);
+    const floorPlans = (l?.floorPlanImages ?? []).map((im: unknown) => {
+      const imageObj = im as { 'url({"format":"WIDTH1024"})': string } | null;
+      return imageObj?.['url({"format":"WIDTH1024"})'];
+    }).filter(Boolean);
 
     // Open houses
     const openHouses = (l?.upcomingOpenHouses ?? [])
-      .map((r: any) => r?.__ref ? state[r.__ref] : null)
+      .map((r: unknown) => {
+        const ref = r as { __ref?: string } | null;
+        return ref?.__ref ? state[ref.__ref] : null;
+      })
       .filter(Boolean)
-      .map((oh: any) => ({
-        start: new Date(Number(oh.start) * 1000).toISOString(),
-        end: new Date(Number(oh.end) * 1000).toISOString(),
-        description: oh.description ?? undefined,
-      }));
+      .map((oh: unknown) => {
+        const openHouse = oh as { start: number; end: number; description?: string };
+        return {
+          start: new Date(Number(openHouse.start) * 1000).toISOString(),
+          end: new Date(Number(openHouse.end) * 1000).toISOString(),
+          description: openHouse.description ?? undefined,
+        };
+      });
 
     const dto: HemnetScrapeDto = {
       // Core
@@ -108,7 +120,10 @@ export async function GET(req: Request) {
       energyClass: l?.energyClassification?.classification ?? null,
       daysOnHemnet: l?.daysOnHemnet ?? null,
       timesViewed: l?.timesViewed ?? null,
-      labels: (l?.labels ?? []).map((x: any) => x?.identifier).filter(Boolean),
+      labels: (l?.labels ?? []).map((x: unknown) => {
+        const label = x as { identifier?: string } | null;
+        return label?.identifier;
+      }).filter(Boolean),
       // Media
       imageUrl,
       images,
@@ -121,8 +136,9 @@ export async function GET(req: Request) {
     };
 
     return Response.json(dto);
-  } catch (err: any) {
-    return new Response(`Hemnet scrape error: ${err?.message ?? String(err)}`, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(`Hemnet scrape error: ${message}`, { status: 500 });
   }
 }
 

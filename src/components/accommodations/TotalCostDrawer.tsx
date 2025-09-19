@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Drawer } from "vaul";
-import { X, Calculator, Info, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Home, Asterisk } from "lucide-react";
+import { X, Calculator, Info, TrendingUp, ArrowUpRight, ArrowDownRight, Home, Asterisk } from "lucide-react";
 import type { Accommodation } from "@/lib/accommodations";
 import { useAccommodations } from "@/lib/accommodations";
 
@@ -105,9 +105,14 @@ export default function TotalCostDrawer({
                   </div>
 
                   {driftIsEst && (() => {
-                    const area = typeof (item as any).boarea === 'number' ? (item as any).boarea as number : 0;
-                    const y = typeof (item as any).constructionYear === 'number' ? (item as any).constructionYear as number : undefined;
-                    const ecRaw = (((item as any)?.metrics)?.meta?.energyClass ?? (item as any)?.meta?.energyClass) as string | undefined;
+                    const itemWithArea = item as Accommodation & { boarea?: number; constructionYear?: number };
+                    const area = typeof itemWithArea.boarea === 'number' ? itemWithArea.boarea : 0;
+                    const y = typeof itemWithArea.constructionYear === 'number' ? itemWithArea.constructionYear : undefined;
+                    const itemWithMetrics = item as Accommodation & {
+                      metrics?: { meta?: { energyClass?: string } };
+                      meta?: { energyClass?: string }
+                    };
+                    const ecRaw = (itemWithMetrics?.metrics?.meta?.energyClass ?? itemWithMetrics?.meta?.energyClass) as string | undefined;
                     const E = typeof ecRaw === 'string' ? ecRaw.trim().toUpperCase() : undefined;
                     const baseCost = 30000;
                     const areaCost = area * 150;

@@ -74,8 +74,9 @@ export async function GET(req: Request) {
     const seconds = leg?.duration?.value;
     const minutes = seconds != null ? Math.round(seconds / 60) : null;
     return Response.json({ minutes, status: data.status });
-  } catch (err: any) {
-    return new Response(`Directions API error: ${err?.message ?? String(err)}`, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(`Directions API error: ${message}`, { status: 500 });
   }
 }
 

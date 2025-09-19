@@ -34,7 +34,7 @@ export function pickEmbedKey(preferred?: string): string | undefined {
   // Note: only NEXT_PUBLIC_* are exposed to client bundles. Others will be undefined in the browser.
   const publicEnv = ensureKey(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string | undefined);
   // Some projects may use a custom name; keep a best-effort fallback for server components passing it through.
-  const custom = ensureKey((process.env as any)["google-map-api-key"] as string | undefined);
+  const custom = ensureKey((process.env as Record<string, string | undefined>)["google-map-api-key"] as string | undefined);
   return fromProp ?? publicEnv ?? custom;
 }
 

@@ -85,7 +85,10 @@ export default function OverviewPage() {
     const ae = a.enabled ?? {}; const be = b.enabled ?? {};
     const ak = Object.keys(ae).sort().join('|'); const bk = Object.keys(be).sort().join('|');
     if (ak !== bk) return false;
-    for (const k of Object.keys(ae)) { if ((ae as any)[k] !== (be as any)[k]) return false; }
+    for (const k of Object.keys(ae)) {
+      const key = k as keyof typeof ae;
+      if (ae[key] !== be[key]) return false;
+    }
     return true;
   }
 
@@ -99,7 +102,7 @@ export default function OverviewPage() {
       setPreset(p);
       setCardConfig(prev => equalCardConfig(prev, configFor(p, custom)) ? prev : configFor(p, custom));
     } catch {}
-  }, [configFor]);
+  }, [configFor, defaultConfig]);
 
   // Persist preset
   React.useEffect(() => { try { localStorage.setItem('reskollen.cardPreset.v1', preset); } catch {} }, [preset]);
@@ -136,8 +139,8 @@ export default function OverviewPage() {
       }
       setUrl("");
       setOpen(false);
-    } catch (e: any) {
-      setError(e?.message ?? "Något gick fel");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Något gick fel");
     } finally {
       setLoading(false);
     }
@@ -273,7 +276,7 @@ export default function OverviewPage() {
                   {cardConfig.showCommute !== false && (
                     <div className="inline-flex items-center gap-2 text-xs w-full sm:w-auto">
                       <span>Mode</span>
-                      <select className="w-[120px] rounded border bg-background px-2 py-1 text-xs" value={cardConfig.commuteMode ?? 'transit'} onChange={(e) => setCardConfig((prev) => ({ ...prev, commuteMode: e.target.value as any }))}>
+                      <select className="w-[120px] rounded border bg-background px-2 py-1 text-xs" value={cardConfig.commuteMode ?? 'transit'} onChange={(e) => setCardConfig((prev) => ({ ...prev, commuteMode: e.target.value as 'transit' | 'driving' | 'bicycling' }))}>
                         <option value="transit">Transit</option>
                         <option value="driving">Bil</option>
                         <option value="bicycling">Cykel</option>
