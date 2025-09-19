@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import TotalCostDrawer from "@/components/accommodations/TotalCostDrawer";
 import CellDetailDrawer, { type CellContext } from "@/components/compare/CellDetailDrawer";
 import { metrics, type MetricKey } from "@/lib/compareMetrics";
+import { pickEmbedKey, buildDirectionsEmbedUrl } from "@/lib/mapsEmbedUrl";
 
 export type CardFieldKey =
   | "price"
@@ -552,15 +553,17 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
 
                     {/* Map area */}
                     <div className="min-h-0 flex-1">
-                      {directions && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
-                        <iframe
-                          title="Google Maps vägbeskrivning"
-                          className="w-full h-full border-0"
-                          loading="lazy"
-                          referrerPolicy="no-referrer-when-downgrade"
-                          src={`https://www.google.com/maps/embed/v1/directions?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&origin=${encodeURIComponent(directions.origin)}&destination=${encodeURIComponent(directions.destination)}&mode=${directions.mode}`}
-                        />
-                      ) : directions ? (
+                      {(() => {
+                        const apiKey = pickEmbedKey();
+                        return directions && apiKey ? (
+                          <iframe
+                            title="Google Maps vägbeskrivning"
+                            className="w-full h-full border-0"
+                            loading="lazy"
+                            referrerPolicy="no-referrer-when-downgrade"
+                            src={buildDirectionsEmbedUrl(apiKey, directions.origin, directions.destination, directions.mode as any)}
+                          />
+                        ) : directions ? (
                         <div className="h-full flex items-center justify-center p-4">
                           <div className="text-center space-y-3">
                             <div className="text-sm text-muted-foreground">Kartnyckel saknas för inbäddad vägbeskrivning.</div>
@@ -575,7 +578,8 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                             </Button>
                           </div>
                         </div>
-                      ) : null}
+                      ) : null;
+                      })()}
                     </div>
                   </div>
                 </div>
