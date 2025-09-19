@@ -14,7 +14,8 @@ export type MetricKey =
   | "prisPerKvm"
   | "byggar"
   | "dagarPaHemnet"
-  | "energiklass";
+  | "energiklass"
+  | "lan";
 
 export type MetricContext = {
   current?: Accommodation | null;
@@ -232,6 +233,14 @@ export const metrics: Record<MetricKey, Metric> = {
     valueOf: (a) => energyScoreFromLetter((a.metrics as any)?.meta?.energyClass),
     format: (n) => energyLetterFromScore(n),
     valuesAcross: (cols) => cols.map((c) => ({ id: c.id, title: c.title, value: energyScoreFromLetter((c.metrics as any)?.meta?.energyClass) })),
+  },
+  lan: {
+    key: "lan",
+    label: "Lån",
+    unit: "kr",
+    goodWhenHigher: false,
+    valueOf: (a) => (a as any).lan ?? undefined,
+    valuesAcross: (cols) => cols.map((c) => ({ id: c.id, title: c.title, value: (c as any).lan ?? undefined })),
   },
 };
 

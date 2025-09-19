@@ -19,10 +19,26 @@ import { Plus } from "lucide-react";
 const nfSE2 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function parseSwedishNumber(input?: string | null): number | undefined {
   if (input == null) return undefined;
-  const s = String(input).trim().replace(/\s/g, "").replace(",", ".");
+  const s = String(input).trim().replace(/\s/g, "");
   if (!s) return undefined;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : undefined;
+
+  // Handle Swedish number format: spaces as thousand separators, comma as decimal separator
+  // First, check if there's a comma (decimal separator)
+  const parts = s.split(',');
+  if (parts.length === 2) {
+    // Has decimal part: remove any remaining spaces and convert comma to dot
+    const cleaned = parts[0].replace(/\s/g, '') + '.' + parts[1];
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : undefined;
+  } else if (parts.length === 1) {
+    // No decimal part: just remove spaces
+    const cleaned = s.replace(/\s/g, '');
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : undefined;
+  } else {
+    // Multiple commas - invalid format
+    return undefined;
+  }
 }
 
 export default function SettingsPage() {
@@ -57,7 +73,7 @@ export default function SettingsPage() {
   const [migrateMessage, setMigrateMessage] = useState<string | null>(null);
 
   // Current home form state
-  const [loanRows, setLoanRows] = useState<Array<{ principal: string; rate: string }>>([{ principal: "", rate: "" }]);
+  const [loanRows, setLoanRows] = useState<Array<{ principal: string; rate: string }>>([]);
   useEffect(() => {
     const existing = (((current?.metrics as any)?.mortgage?.loans) ?? []) as Array<{ principal?: number; interestRateAnnual?: number }>;
     const next = (existing && existing.length > 0)
@@ -66,9 +82,8 @@ export default function SettingsPage() {
           rate: l?.interestRateAnnual != null ? nfSE2.format((l.interestRateAnnual || 0) * 100) : "",
         }))
       : [];
-    const equal = next.length === loanRows.length && next.every((n, i) => n.principal === loanRows[i]?.principal && n.rate === loanRows[i]?.rate);
-    if (!equal) setLoanRows(next);
-  }, [current, loanRows]);
+    setLoanRows(next);
+  }, [current]);
 
   // Places form state
   // Loan editor state (nested drawer)
@@ -316,12 +331,14 @@ export default function SettingsPage() {
                       const valuation = num(fd.get('valuation'));
                       const loans = loanRows
                         .map((r) => {
-                          const principal = parseSwedishNumber(r.principal) ?? NaN;
-                          const percent = parseSwedishNumber(r.rate) ?? NaN; // e.g. 2,35
-                          const interestRateAnnual = Number.isFinite(percent) ? percent / 100 : NaN;
+                          const principal = parseSwedishNumber(r.principal);
+                          const percent = parseSwedishNumber(r.rate); // e.g. 2,35
+                          const interestRateAnnual = percent != null ? percent / 100 : undefined;
                           return { principal, interestRateAnnual };
                         })
-                        .filter((l) => Number.isFinite(l.principal) && l.principal! > 0 && Number.isFinite(l.interestRateAnnual) && l.interestRateAnnual! > 0);
+                        .filter((l): l is { principal: number; interestRateAnnual: number } =>
+                          l.principal != null && l.principal > 0 && l.interestRateAnnual != null && l.interestRateAnnual > 0
+                        );
 
                       upsertCurrentFromUser({
                         title: (fd.get('title') as string) || undefined,

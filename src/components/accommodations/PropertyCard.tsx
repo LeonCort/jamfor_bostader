@@ -14,6 +14,8 @@ import { Drawer } from "vaul";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 import TotalCostDrawer from "@/components/accommodations/TotalCostDrawer";
+import CellDetailDrawer, { type CellContext } from "@/components/compare/CellDetailDrawer";
+import { metrics, type MetricKey } from "@/lib/compareMetrics";
 
 export type CardFieldKey =
   | "price"
@@ -71,6 +73,24 @@ function LucideIcon({ name, className }: { name?: string; className?: string }) 
   return <Cmp className={className} />;
 }
 
+// Simple media query hook (local to this component)
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.matchMedia(query);
+    const handler = () => setMatches(m.matches);
+    handler();
+    if ((m as any).addEventListener) (m as any).addEventListener("change", handler);
+    else (m as any).addListener(handler);
+    return () => {
+      if ((m as any).removeEventListener) (m as any).removeEventListener("change", handler);
+      else (m as any).removeListener(handler);
+    };
+  }, [query]);
+  return matches;
+}
+
 export default function PropertyCard({ item, className, config }: PropertyCardProps) {
   const pricePerSqm = React.useMemo(() => {
     if (!item.begartPris || !item.boarea || item.boarea === 0) return undefined;
@@ -87,7 +107,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   }, [item.postort, item.kommun, item.address]);
 
   // viktiga platser and commute times
-  const { places, remove, update, commuteForMode, saveManualCommuteMinutes } = useAccommodations();
+  const { accommodations, current, finance, places, remove, update, commuteForMode, saveManualCommuteMinutes } = useAccommodations();
 
   // Down payment (15% of price) or current = market value - loan
   const downPayment = React.useMemo(() => {
@@ -145,6 +165,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   const [directions, setDirections] = React.useState<{ origin: string; destination: string; mode: 'driving' | 'walking' | 'bicycling' | 'transit' } | null>(null);
   const [directionsPlaceId, setDirectionsPlaceId] = React.useState<string | null>(null);
   const [minutesInput, setMinutesInput] = React.useState<string>("");
+  const isMd = useMediaQuery("(min-width: 768px)");
 
   const openDirections = React.useCallback((ctx: { origin: string; destination: string; mode?: 'driving' | 'walking' | 'bicycling' | 'transit'; placeId?: string }) => {
     setDirections({ origin: ctx.origin, destination: ctx.destination, mode: ctx.mode ?? 'transit' });
@@ -176,6 +197,46 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   const [costOpen, setCostOpen] = React.useState(false);
 
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  // Cell details drawer (same as compare page)
+  const [cellOpen, setCellOpen] = React.useState(false);
+  const [cellCtx, setCellCtx] = React.useState<CellContext | null>(null);
+  const openCell = React.useCallback((ctx: CellContext) => { setCellCtx(ctx); setCellOpen(true); }, []);
+
+  const metricMap: Partial<Record<CardFieldKey, MetricKey>> = {
+    price: "utropspris",
+    totalMonthlyCost: "totalMonthlyCost",
+    downPayment: "kontantinsats",
+    constructionYear: "byggar",
+    rooms: "antalRum",
+    energyClass: "energiklass",
+    livingArea: "boarea",
+    plotArea: "tomtarea",
+    monthlyFee: "hyra",
+    operatingMonthly: "driftkostnaderMonthly",
+    amortering: "amorteringPerManad",
+    ranta: "rantaPerManad",
+    lan: "lan",
+  };
+
+  function openMetricDrawer(cardKey: CardFieldKey) {
+    const mk = metricMap[cardKey];
+    if (mk) {
+      const M = metrics[mk];
+      const unitForCell = M.unit?.startsWith("kr") ? "kr" : M.unit;
+      const cols = [...(accommodations ?? [])];
+      const base = current ? M.valueOf(current, { current, finance }) : undefined;
+      const val = M.valueOf(item, { current, finance });
+      const delta = item.kind !== "current" && base != null && val != null ? (val as number) - (base as number) : null;
+      const valuesAcross = M.valuesAcross
+        ? M.valuesAcross(cols, { current, finance }).map(v => ({ id: v.id, title: v.title ?? undefined, value: v.value }))
+        : cols.map((c) => ({ id: c.id, title: c.title, value: M.valueOf(c, { current, finance }) }));
+      openCell({ acc: item, label: M.label, unit: unitForCell, value: val, delta, metricKey: mk, valuesAcross });
+      return;
+    }
+    // Default minimal drawer
+    openCell({ acc: item, label: "Detaljer", value: undefined });
+  }
+
   const [detailsTab, setDetailsTab] = React.useState<'basic' | 'cost' | 'travel'>('basic');
 
   const maintenancePerMonth = item.driftkostnader != null ? Math.round(item.driftkostnader / 12) : undefined;
@@ -189,20 +250,21 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
   const showCommute = config?.showCommute !== false;
 
   const specs: Record<CardFieldKey, { label: string; icon: any; value: string; clickable?: boolean; onClick?: () => void }> = {
-    price: { label: 'Pris', icon: CircleDollarSign, value: formatSek(listingPrice) },
+    price: { label: 'Pris', icon: CircleDollarSign, value: formatSek(listingPrice), clickable: true, onClick: () => openMetricDrawer('price') },
+    // Keep custom Total cost drawer as-is
     totalMonthlyCost: { label: 'Totalkostnad', icon: CircleDollarSign, value: item.totalMonthlyCost != null ? `${item.totalMonthlyCost.toLocaleString('sv-SE')} kr/mån` : '—', clickable: true, onClick: () => setCostOpen(true) },
-    downPayment: { label: 'Inköpspris (15%)', icon: PiggyBank, value: downPayment != null ? `${downPayment.toLocaleString('sv-SE')} kr` : '—' },
-    constructionYear: { label: 'Byggår', icon: Calendar, value: item.constructionYear != null ? String(item.constructionYear) : '—' },
-    rooms: { label: 'Rum', icon: Bed, value: item.antalRum != null ? String(item.antalRum) : '—' },
-    energyClass: { label: 'Energiklass', icon: Leaf, value: String(((item as any)?.metrics?.meta as any)?.energyClass ?? '—') },
-    livingArea: { label: 'Storlek', icon: Ruler, value: item.boarea != null ? `${item.boarea} m²` : '—' },
-    plotArea: { label: 'Tomtarea', icon: Ruler, value: item.tomtarea != null ? `${item.tomtarea} m²` : '—' },
-    monthlyFee: { label: 'Avgift', icon: CircleDollarSign, value: item.hyra != null ? `${item.hyra.toLocaleString('sv-SE')} kr/mån` : '—' },
-    operatingMonthly: { label: 'Drift / mån', icon: CircleDollarSign, value: maintenancePerMonth != null ? `${maintenancePerMonth.toLocaleString('sv-SE')} kr/mån` : '—' },
-    kontantinsats: { label: 'Kontantinsats', icon: PiggyBank, value: formatSek(item.kontantinsats) },
-    lan: { label: 'Lån', icon: CircleDollarSign, value: formatSek(item.lan) },
-    amortering: { label: 'Amortering / mån', icon: CircleDollarSign, value: formatSek(item.amorteringPerManad) },
-    ranta: { label: 'Ränta / mån', icon: CircleDollarSign, value: formatSek(item.rantaPerManad) },
+    downPayment: { label: 'Inköpspris (15%)', icon: PiggyBank, value: downPayment != null ? `${downPayment.toLocaleString('sv-SE')} kr` : '—', clickable: true, onClick: () => openMetricDrawer('downPayment') },
+    constructionYear: { label: 'Byggår', icon: Calendar, value: item.constructionYear != null ? String(item.constructionYear) : '—', clickable: true, onClick: () => openMetricDrawer('constructionYear') },
+    rooms: { label: 'Rum', icon: Bed, value: item.antalRum != null ? String(item.antalRum) : '—', clickable: true, onClick: () => openMetricDrawer('rooms') },
+    energyClass: { label: 'Energiklass', icon: Leaf, value: String(((item as any)?.metrics?.meta as any)?.energyClass ?? '—'), clickable: true, onClick: () => openMetricDrawer('energyClass') },
+    livingArea: { label: 'Storlek', icon: Ruler, value: item.boarea != null ? `${item.boarea} m²` : '—', clickable: true, onClick: () => openMetricDrawer('livingArea') },
+    plotArea: { label: 'Tomtarea', icon: Ruler, value: item.tomtarea != null ? `${item.tomtarea} m²` : '—', clickable: true, onClick: () => openMetricDrawer('plotArea') },
+    monthlyFee: { label: 'Avgift', icon: CircleDollarSign, value: item.hyra != null ? `${item.hyra.toLocaleString('sv-SE')} kr/mån` : '—', clickable: true, onClick: () => openMetricDrawer('monthlyFee') },
+    operatingMonthly: { label: 'Drift / mån', icon: CircleDollarSign, value: maintenancePerMonth != null ? `${maintenancePerMonth.toLocaleString('sv-SE')} kr/mån` : '—', clickable: true, onClick: () => openMetricDrawer('operatingMonthly') },
+    kontantinsats: { label: 'Kontantinsats', icon: PiggyBank, value: formatSek(item.kontantinsats), clickable: true, onClick: () => openMetricDrawer('kontantinsats') },
+    lan: { label: 'Lån', icon: CircleDollarSign, value: formatSek(item.lan), clickable: true, onClick: () => openMetricDrawer('lan') },
+    amortering: { label: 'Amortering / mån', icon: CircleDollarSign, value: formatSek(item.amorteringPerManad), clickable: true, onClick: () => openMetricDrawer('amortering') },
+    ranta: { label: 'Ränta / mån', icon: CircleDollarSign, value: formatSek(item.rantaPerManad), clickable: true, onClick: () => openMetricDrawer('ranta') },
   };
 
   return (
@@ -460,7 +522,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
             </Drawer.Portal>
           </Drawer.Root>
 
-          <Drawer.Root open={directionsOpen} onOpenChange={setDirectionsOpen}>
+          <Drawer.Root open={directionsOpen} onOpenChange={setDirectionsOpen} direction={isMd ? "right" : "bottom"}>
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
               <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border/60 bg-card p-0 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[640px] md:rounded-t-none md:rounded-l-2xl">
@@ -522,6 +584,10 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
           </Drawer.Root>
 
           <TotalCostDrawer open={costOpen} onOpenChange={setCostOpen} item={item} />
+
+
+          {/* KPI Cell detail drawer (shared with Compare page) */}
+          <CellDetailDrawer open={cellOpen} onOpenChange={setCellOpen} ctx={cellCtx} />
 
           {/* Visa detaljer drawer */}
           <Drawer.Root open={detailsOpen} onOpenChange={setDetailsOpen}>
@@ -611,6 +677,8 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                           <>
                             <div className="rounded-md border p-3">
                               <div className="text-xs text-muted-foreground">Kontantinsats</div>
+
+
                               <div>{formatSek(item.kontantinsats)}</div>
                             </div>
                             <div className="rounded-md border p-3">

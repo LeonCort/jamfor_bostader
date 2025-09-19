@@ -75,7 +75,20 @@ export const fetchDirections = action({
     placeId: v.id("places"),
   },
   handler: async (ctx, { origin, destination, mode, arriveBy, accommodationId, placeId }) => {
-    const userId = await getUserIdOrThrow(ctx);
+    // For scheduled actions, we need to get the userId from the accommodation/place records
+    // since the auth context is not available in scheduled actions
+    const identity = await ctx.auth.getUserIdentity();
+    let userId: string;
+
+    if (identity) {
+      // Direct call with auth context
+      userId = identity.subject;
+    } else {
+      // Scheduled call - get userId from the accommodation record
+      const accommodation = await ctx.runQuery(api.accommodations.getById, { id: accommodationId });
+      if (!accommodation) throw new Error("Accommodation not found");
+      userId = accommodation.userId;
+    }
     const key = process.env.GOOGLE_MAPS_API_KEY;
     if (!key) throw new Error("Missing GOOGLE_MAPS_API_KEY in Convex env");
 

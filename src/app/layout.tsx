@@ -1,7 +1,6 @@
 import { ThemeProvider } from "@/components/theme-provider";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
-import { PageTransitions } from "@/components/page-transitions";
 import { Providers } from "./providers";
 import { inter } from "@/lib/fonts";
 import "./globals.css";
@@ -28,7 +27,7 @@ export default async function RootLayout({
               <Header />
             </div>
             <main className="sm:pt-14 pb-16 sm:pb-0">
-              <PageTransitions>{children}</PageTransitions>
+              {children}
             </main>
             <BottomNav />
           </ThemeProvider>

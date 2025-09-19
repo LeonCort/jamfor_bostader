@@ -503,7 +503,7 @@ export default function ComparePage() {
           <div>
 
             {/* Rows (registry-driven) */}
-            {(["hyra", "driftkostnaderMonthly", "amorteringPerManad", "rantaPerManad"] as MetricKey[]).map((key) => {
+            {(["hyra", "driftkostnaderMonthly", "amorteringPerManad", "rantaPerManad", "lan"] as MetricKey[]).map((key) => {
               const M = metrics[key];
               const unitForCell = M.unit?.startsWith("kr") ? "kr" : M.unit;
               return (
