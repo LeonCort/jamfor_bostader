@@ -95,8 +95,8 @@ export default function OverviewPage() {
   // Initial load: preset + custom config (migrates old key if present)
   React.useEffect(() => {
     try {
-      const p = (localStorage.getItem('reskollen.cardPreset.v1') as Preset | null) ?? 'minimal';
-      const rawCustom = localStorage.getItem('reskollen.cardConfig.custom.v1') ?? localStorage.getItem('reskollen.cardConfig.v1');
+      const p = (localStorage.getItem('hemjakt.cardPreset.v1') as Preset | null) ?? 'minimal';
+      const rawCustom = localStorage.getItem('hemjakt.cardConfig.custom.v1') ?? localStorage.getItem('hemjakt.cardConfig.v1');
       const custom = rawCustom ? (JSON.parse(rawCustom) as CardConfig) : defaultConfig;
       setSavedCustom(custom);
       setPreset(p);
@@ -105,14 +105,14 @@ export default function OverviewPage() {
   }, [configFor, defaultConfig]);
 
   // Persist preset
-  React.useEffect(() => { try { localStorage.setItem('reskollen.cardPreset.v1', preset); } catch {} }, [preset]);
+  React.useEffect(() => { try { localStorage.setItem('hemjakt.cardPreset.v1', preset); } catch {} }, [preset]);
 
 
   // Persist custom config only when editing in custom mode; avoid loops
   React.useEffect(() => {
     if (preset !== 'custom') return;
     try {
-      localStorage.setItem('reskollen.cardConfig.custom.v1', JSON.stringify(cardConfig));
+      localStorage.setItem('hemjakt.cardConfig.custom.v1', JSON.stringify(cardConfig));
       setSavedCustom(prev => equalCardConfig(prev, cardConfig) ? prev as CardConfig : cardConfig);
     } catch {}
   }, [preset, cardConfig]);

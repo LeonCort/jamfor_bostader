@@ -55,8 +55,8 @@ export type Accommodation = {
   metrics?: Record<string, unknown>;
 };
 
-const STORAGE_KEY = "reskollen.accommodations.v1";
-const PLACES_STORAGE_KEY = "reskollen.places.v1";
+const STORAGE_KEY = "hemjakt.accommodations.v1";
+const PLACES_STORAGE_KEY = "hemjakt.places.v1";
 
 export type ImportantPlace = {
   id: string;
@@ -70,7 +70,7 @@ export type ImportantPlace = {
 
 export type TravelMode = "transit" | "driving" | "bicycling";
 
-const COMMUTE_CACHE_KEY = "reskollen.commuteManual.v1";
+const COMMUTE_CACHE_KEY = "hemjakt.commuteManual.v1";
 type CommuteCacheEntry = { minutes: number; updatedAt: number };
 function loadCommuteCache(): Record<string, CommuteCacheEntry> {
   if (typeof window === "undefined") return {};
@@ -115,7 +115,7 @@ function savePlacesToStorage(list: ImportantPlace[]) {
   }
 }
 
-const FINANCE_STORAGE_KEY = "reskollen.finance.v1";
+const FINANCE_STORAGE_KEY = "hemjakt.finance.v1";
 export type FinanceSettings = {
   downPaymentRate: number; // e.g., 0.15
   interestRateAnnual: number; // e.g., 0.03

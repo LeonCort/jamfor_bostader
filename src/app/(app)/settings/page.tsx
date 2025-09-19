@@ -595,10 +595,10 @@ export default function SettingsPage() {
                               setMigrateMessage(null);
                               const read = (k: string) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } };
                               try {
-                                const accommodations = read('reskollen.accommodations.v1') ?? [];
-                                const places = read('reskollen.places.v1') ?? [];
-                                const finance = read('reskollen.finance.v1');
-                                const prefs = read('reskollen.cardConfig.v1');
+                                const accommodations = read('hemjakt.accommodations.v1') ?? [];
+                                const places = read('hemjakt.places.v1') ?? [];
+                                const finance = read('hemjakt.finance.v1');
+                                const prefs = read('hemjakt.cardConfig.v1');
                                 const res = await migrate({ accommodations, places, finance, prefs });
                                 setMigrateMessage(`Migrerade ${res?.accUpserts ?? 0} bostäder, ${res?.placeUpserts ?? 0} platser`);
                               } catch {

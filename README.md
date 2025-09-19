@@ -1,4 +1,8 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HemJakt
+
+Smart hemjakt - jämför bostäder, pendlingstider och livskvalitet.
+
+This is a [Next.js](https://nextjs.org) project built for intelligent property comparison and decision-making.
 
 ## Getting Started
 

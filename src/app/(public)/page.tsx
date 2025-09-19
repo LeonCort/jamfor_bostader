@@ -18,7 +18,7 @@ export default function LandingPage() {
     <div className="min-h-[70vh] flex items-center justify-center px-4">
       <div className="w-full max-w-xl rounded-2xl border border-slate-200/60 bg-white/70 dark:bg-slate-900/50 p-8 shadow-sm text-center">
         <SignedOut>
-          <h1 className="text-2xl font-semibold tracking-tight">Välkommen till Reskollen</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Välkommen till Hemjakt</h1>
           <p className="mt-2 text-slate-600 dark:text-slate-300">
             Logga in eller skapa ett konto för att gå till appen.
           </p>

@@ -1,4 +1,4 @@
-# 🚀 Vercel Deployment Checklist for Reskollen
+# 🚀 Vercel Deployment Checklist for HemJakt
 
 ## ✅ Pre-Deployment Status
 
