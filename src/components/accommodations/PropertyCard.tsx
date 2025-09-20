@@ -419,10 +419,10 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
           <Drawer.Root open={editOpen} onOpenChange={setEditOpen}>
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 max-h-[90svh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl flex flex-col md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
                 <Drawer.Title className="sr-only">Redigera bostad</Drawer.Title>
 
-                <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                <div className="mx-auto max-w-screen-md h-full min-h-0 flex flex-col">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold leading-tight">Redigera bostad</div>
@@ -430,7 +430,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setEditOpen(false)}>Stäng</Button>
                   </div>
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
                     <div className="space-y-1 sm:col-span-2">
                       <div className="text-xs text-muted-foreground">Titel</div>
                       <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
@@ -526,7 +526,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
           <Drawer.Root open={directionsOpen} onOpenChange={setDirectionsOpen} direction={isMd ? "right" : "bottom"}>
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border/60 bg-card p-0 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[640px] md:rounded-t-none md:rounded-l-2xl">
+              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 max-h-[90svh] rounded-t-2xl border border-border/60 bg-card p-0 shadow-xl flex flex-col md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[640px] md:rounded-t-none md:rounded-l-2xl">
                 <Drawer.Title className="sr-only">Vägbeskrivning</Drawer.Title>
                 <div className="flex h-full flex-col">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
@@ -597,9 +597,9 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
           <Drawer.Root open={detailsOpen} onOpenChange={setDetailsOpen}>
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
-              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 h-[90vh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
+              <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 max-h-[90svh] rounded-t-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-xl flex flex-col md:right-0 md:inset-y-0 md:inset-x-auto md:h-full md:w-[520px] md:rounded-t-none md:rounded-l-2xl">
                 <Drawer.Title className="sr-only">Visa detaljer</Drawer.Title>
-                <div className="mx-auto max-w-screen-md h-full flex flex-col">
+                <div className="mx-auto max-w-screen-md h-full min-h-0 flex flex-col">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold leading-tight">{item.title}</div>
@@ -635,7 +635,7 @@ export default function PropertyCard({ item, className, config }: PropertyCardPr
                     ))}
                   </div>
 
-                  <div className="mt-4 grow overflow-y-auto">
+                  <div className="mt-4 grow overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
                     {detailsTab === 'basic' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                         <div className="rounded-md border p-3">

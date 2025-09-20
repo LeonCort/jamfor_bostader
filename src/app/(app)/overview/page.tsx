@@ -258,7 +258,7 @@ export default function OverviewPage() {
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
           <Drawer.Content className="fixed z-50 overflow-hidden border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 h-[90vh] rounded-t-2xl sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[560px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
-            <div className="mx-auto max-w-screen-sm flex flex-col gap-4 overflow-auto pb-[env(safe-area-inset-bottom)]">
+            <div className="mx-auto max-w-screen-sm flex flex-col gap-4 overflow-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
               <Drawer.Handle className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-border sm:hidden" />
               <Drawer.Title className="sr-only">Anpassa kort</Drawer.Title>
               <div className="grid gap-3 sm:flex sm:items-center sm:justify-between">
@@ -348,11 +348,11 @@ export default function OverviewPage() {
       </Drawer.Root>
 
 
-      <Drawer.Root open={open} onOpenChange={setOpen}>
+      <Drawer.Root repositionInputs={false} open={open} onOpenChange={setOpen}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-background/80" />
           <Drawer.Content className="fixed z-50 border border-border/60 bg-card p-4 sm:p-6 shadow-xl inset-x-0 bottom-0 max-h-[85svh] rounded-t-2xl flex flex-col sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:right-auto sm:h-auto sm:w-[520px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
-            <div className="mx-auto max-w-screen-sm flex flex-col gap-4 overflow-auto pb-[env(safe-area-inset-bottom)]">
+            <div className="mx-auto max-w-screen-sm flex flex-col gap-4 overflow-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
               <Drawer.Handle className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-border sm:hidden" />
               <Drawer.Title className="sr-only">L&auml;gg till bostad</Drawer.Title>
               <div>
